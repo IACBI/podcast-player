@@ -1,0 +1,1884 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podcast Player</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#5b8af5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Podcasts">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  /* Colors */
+  --bg: #111217;
+  --bg2: #16181f;
+  --surface: #1c1e27;
+  --surface2: #222530;
+  --border: #2a2d3a;
+  --border2: #333748;
+  --accent: #5b8af5;
+  --accent-dim: #3a5fcc;
+  --accent-glow: rgba(91,138,245,0.15);
+  --text: #e8eaf2;
+  --text2: #9499b0;
+  --text3: #5a5f78;
+  --green: #4ecb8d;
+  --red: #e06060;
+  --yellow: #e0b84a;
+
+  /* Settings (user-overridable via JS) */
+  --player-font-size: 13px;
+  --list-row-height: 54px;
+
+  /* Layout */
+  --header-h: 64px;
+  --status-h: 32px;
+  --player-h: auto;
+  --sortbar-h: 36px;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+/* ═══════════════════════════════════════
+   SEARCH SCREEN
+═══════════════════════════════════════ */
+#searchScreen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  gap: 28px;
+  background: var(--bg);
+  position: relative;
+}
+
+.brand {
+  text-align: center;
+}
+.brand-logo {
+  width: 56px; height: 56px;
+  background: var(--accent);
+  border-radius: 16px;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 16px;
+  font-size: 22px;
+}
+.brand-name {
+  font-family: 'DM Mono', monospace;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.5px;
+}
+.brand-sub {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 4px;
+  font-family: 'DM Mono', monospace;
+}
+
+.search-wrap {
+  width: 100%;
+  max-width: 540px;
+}
+.search-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.search-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.search-input::placeholder { color: var(--text3); }
+
+.search-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 12px 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  white-space: nowrap;
+}
+.search-btn:hover { background: #6e9bf7; }
+.search-btn:active { transform: scale(0.97); }
+.search-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.search-hint {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  text-align: center;
+}
+
+.results-list {
+  width: 100%;
+  max-width: 540px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.results-list::-webkit-scrollbar { width: 4px; }
+.results-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.result-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.result-item:hover { border-color: var(--accent); background: var(--surface2); }
+.result-thumb {
+  width: 50px; height: 50px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--border);
+}
+.result-info { flex: 1; min-width: 0; }
+.result-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+.result-author { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-count { font-size: 10px; color: var(--accent); font-family: 'DM Mono', monospace; margin-top: 3px; }
+.result-arrow { color: var(--text3); font-size: 18px; flex-shrink: 0; }
+
+.empty-state {
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  line-height: 2;
+}
+
+/* ═══════════════════════════════════════
+   PLAYER SCREEN
+═══════════════════════════════════════ */
+#playerScreen {
+  flex: 1;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header */
+.p-header {
+  height: var(--header-h);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.p-back {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.p-back:hover { border-color: var(--accent); color: var(--accent); }
+.p-thumb {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: var(--border);
+}
+.p-meta { flex: 1; min-width: 0; }
+.p-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-author { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.p-epcount { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text3); flex-shrink: 0; }
+.p-epcount strong { color: var(--accent); font-size: 14px; display: block; text-align: right; }
+
+/* Settings icon */
+.settings-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 15px;
+  line-height: 1;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.settings-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Status */
+.p-status {
+  padding: 0 20px;
+  height: var(--status-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+.dot.loading { background: var(--accent); animation: blink 1s infinite; }
+.dot.ok { background: var(--green); }
+.dot.error { background: var(--red); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+.p-status-text { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--text3); }
+
+/* Player Controls */
+.p-player {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.p-now-label {
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+}
+.p-now-title {
+  font-size: var(--player-font-size);
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 14px;
+  line-height: 1.4;
+  min-height: 19px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+audio { display: none; }
+
+/* Progress */
+.progress-wrap {
+  width: 100%;
+  height: 4px;
+  background: var(--border2);
+  border-radius: 2px;
+  cursor: pointer;
+  margin-bottom: 6px;
+  position: relative;
+}
+.progress-wrap:hover { height: 6px; margin-bottom: 4px; }
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  pointer-events: none;
+  transition: width 0.1s linear;
+}
+.time-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text3);
+  margin-bottom: 12px;
+}
+
+/* Controls row */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ctrl-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 11px;
+  border-radius: 7px;
+  transition: all 0.15s;
+  white-space: nowrap;
+  line-height: 1;
+}
+.ctrl-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ctrl-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.ctrl-btn:disabled:hover { border-color: var(--border2); color: var(--text2); }
+
+.play-btn {
+  width: 38px; height: 38px;
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, transform 0.1s;
+  flex-shrink: 0;
+}
+.play-btn:hover { background: #6e9bf7; }
+.play-btn:active { transform: scale(0.94); }
+
+.spacer { flex: 1; }
+
+.speed-select {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.speed-select:hover, .speed-select:focus { border-color: var(--accent); }
+
+/* Sort/Filter Bar */
+.sort-bar {
+  height: var(--sortbar-h);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 10px;
+}
+.sort-left { display: flex; align-items: center; gap: 8px; }
+.sort-info {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text3);
+}
+.sort-toggle {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+.sort-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+.search-filter {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  outline: none;
+  width: 160px;
+  transition: border-color 0.15s, width 0.2s;
+}
+.search-filter:focus { border-color: var(--accent); width: 200px; }
+.search-filter::placeholder { color: var(--text3); }
+
+/* Episode List */
+.ep-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.ep-list::-webkit-scrollbar { width: 4px; }
+.ep-list::-webkit-scrollbar-track { background: transparent; }
+.ep-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.ep-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  height: var(--list-row-height);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+  position: relative;
+}
+.ep-item:hover { background: var(--surface); }
+.ep-item.active { background: rgba(91,138,245,0.07); }
+.ep-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.ep-num {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--text3);
+  width: 26px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.ep-info { flex: 1; min-width: 0; }
+.ep-name {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 3px;
+  color: var(--text);
+}
+.ep-item.active .ep-name { color: var(--accent); }
+.ep-date-dur {
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text3);
+}
+.ep-saved-badge {
+  font-size: 9px;
+  font-family: 'DM Mono', monospace;
+  color: var(--yellow);
+  margin-left: 6px;
+}
+
+.ep-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.ep-dl-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  transition: all 0.15s;
+}
+.ep-dl-btn:hover { border-color: var(--green); color: var(--green); }
+.ep-dl-btn.done { border-color: var(--green); color: var(--green); }
+
+/* ═══════════════════════════════════════
+   SETTINGS PANEL (slide-in)
+═══════════════════════════════════════ */
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  display: none;
+  backdrop-filter: blur(2px);
+}
+.settings-overlay.open { display: block; }
+
+.settings-panel {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 300px;
+  background: var(--surface);
+  border-left: 1px solid var(--border2);
+  z-index: 101;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.settings-panel.open { transform: translateX(0); }
+
+.settings-header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.settings-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.settings-close {
+  background: none;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+.settings-close:hover { color: var(--text); }
+
+.settings-body { padding: 20px; display: flex; flex-direction: column; gap: 24px; }
+
+.s-section-title {
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.s-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.s-label {
+  font-size: 12px;
+  color: var(--text2);
+  flex: 1;
+}
+.s-sublabel {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  margin-top: 2px;
+}
+
+.s-select {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  outline: none;
+  min-width: 90px;
+}
+.s-select:focus { border-color: var(--accent); }
+
+.s-range {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--border2);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.s-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.s-toggle {
+  position: relative;
+  width: 38px; height: 21px;
+  flex-shrink: 0;
+}
+.s-toggle input { opacity: 0; width: 0; height: 0; }
+.s-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border2);
+  border-radius: 21px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.s-toggle input:checked + .s-toggle-track { background: var(--accent); }
+.s-toggle-track::before {
+  content: '';
+  position: absolute;
+  width: 15px; height: 15px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.s-toggle input:checked + .s-toggle-track::before { transform: translateX(17px); }
+
+.s-color-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.s-color-swatch {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.s-color-swatch:hover { transform: scale(1.15); }
+.s-color-swatch.active { border-color: var(--text); }
+
+.s-divider { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+.s-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  cursor: pointer;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 8px 14px;
+  border-radius: 7px;
+  transition: all 0.15s;
+  width: 100%;
+  text-align: left;
+}
+.s-btn:hover { border-color: var(--accent); color: var(--accent); }
+.s-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+/* Language picker on search screen */
+.search-screen-topbar {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 10;
+}
+.lang-select {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.lang-select:hover, .lang-select:focus { border-color: var(--accent); color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- ══════════ SEARCH SCREEN ══════════ -->
+<div id="searchScreen">
+  <!-- Language picker top-right -->
+  <div class="search-screen-topbar">
+    <select class="lang-select" id="homeLangSel" onchange="onHomeLangChange()">
+      <option value="tr">🇹🇷 TR</option>
+      <option value="en">🇬🇧 EN</option>
+      <option value="de">🇩🇪 DE</option>
+      <option value="fr">🇫🇷 FR</option>
+      <option value="es">🇪🇸 ES</option>
+      <option value="ar">🇸🇦 AR</option>
+      <option value="ja">🇯🇵 JA</option>
+      <option value="ru">🇷🇺 RU</option>
+    </select>
+  </div>
+
+  <div class="brand">
+    <div class="brand-logo">🎧</div>
+    <div class="brand-name">PODCAST PLAYER</div>
+  </div>
+
+  <div class="search-wrap">
+    <div class="search-row">
+      <input class="search-input" id="searchInput" type="text"
+        placeholder="Podcast adı veya Apple Podcasts linki..." data-i18n-ph="search_placeholder"
+        onkeydown="if(event.key==='Enter') doSearch()" />
+      <button class="search-btn" id="searchBtn" onclick="doSearch()" data-i18n="btn_search">Ara →</button>
+    </div>
+  </div>
+
+  <div class="results-list" id="resultsList"></div>
+</div>
+
+<!-- ══════════ PLAYER SCREEN ══════════ -->
+<div id="playerScreen">
+
+  <!-- Header -->
+  <div class="p-header">
+    <button class="p-back" onclick="goBack()" data-i18n="btn_back">← Geri</button>
+    <img class="p-thumb" id="pThumb" src="" alt="">
+    <div class="p-meta">
+      <div class="p-title" id="pTitle">—</div>
+      <div class="p-author" id="pAuthor">—</div>
+    </div>
+    <div class="p-epcount"><strong id="pEpCount">—</strong>bölüm</div>
+    <button class="settings-btn" onclick="openSettings()" data-i18n-title="settings_title" title="Ayarlar">⚙</button>
+  </div>
+
+  <!-- Status -->
+  <div class="p-status">
+    <div class="dot loading" id="dot"></div>
+    <span class="p-status-text" id="statusText">Yükleniyor...</span>
+  </div>
+
+  <!-- Player -->
+  <div class="p-player">
+    <div class="p-now-label" data-i18n="now_playing">▶ ŞU AN ÇALIYOR</div>
+    <div class="p-now-title" id="nowTitle" data-i18n="pick_episode">Bir bölüm seçin</div>
+    <audio id="audio"></audio>
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="time-row">
+      <span id="tCur">0:00</span>
+      <span id="tTot">0:00</span>
+    </div>
+    <div class="controls">
+      <button class="ctrl-btn" id="btnPrev" onclick="prevEp()" disabled data-i18n="btn_prev">⏮ Önceki</button>
+      <button class="ctrl-btn" id="btnSkipBack" onclick="seekRel(-S.skipBack)">−<span id="lblSkipBack">15</span>s</button>
+      <button class="play-btn" id="btnPlay" onclick="togglePlay()">▶</button>
+      <button class="ctrl-btn" id="btnSkipFwd" onclick="seekRel(S.skipForward)">+<span id="lblSkipFwd">30</span>s</button>
+      <button class="ctrl-btn" id="btnNext" onclick="nextEp()" disabled data-i18n="btn_next">Sonraki ⏭</button>
+      <span class="spacer"></span>
+      <select class="speed-select" id="speedSel" onchange="changeSpeed()">
+        <option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="1.75">1.75×</option>
+        <option value="2">2×</option>
+        <option value="2.5">2.5×</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Sort Bar -->
+  <div class="sort-bar">
+    <div class="sort-left">
+      <button class="sort-toggle" onclick="toggleSort()" data-i18n="btn_sort">⇅ Sıra</button>
+      <span class="sort-info" id="sortInfo" data-i18n="sort_asc">Eskiden → Yeniye</span>
+    </div>
+    <input class="search-filter" id="filterInput" type="text"
+      placeholder="Bölüm ara..." data-i18n-ph="filter_placeholder" oninput="filterEps()" />
+  </div>
+
+  <!-- Episode List -->
+  <div class="ep-list" id="epList">
+    <div class="empty-state">Yükleniyor...</div>
+  </div>
+</div>
+
+<!-- ══════════ SETTINGS PANEL ══════════ -->
+<div class="settings-overlay" id="settingsOverlay" onclick="closeSettings()"></div>
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">
+    <span class="settings-title" data-i18n="settings_heading">⚙ Ayarlar</span>
+    <button class="settings-close" onclick="closeSettings()">×</button>
+  </div>
+  <div class="settings-body">
+
+    <!-- Oynatma -->
+    <div>
+      <div class="s-section-title" data-i18n="s_playback">Oynatma</div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_default_speed">Varsayılan Hız</div>
+          <div class="s-sublabel" data-i18n="s_speed_sub">Bölümler arası korunur</div>
+        </div>
+        <select class="s-select" id="s_defaultSpeed" onchange="applySettings()">
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="1.75">1.75×</option>
+          <option value="2">2×</option>
+          <option value="2.5">2.5×</option>
+        </select>
+      </div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_skip_back">Geri Atla (saniye)</div>
+        </div>
+        <select class="s-select" id="s_skipBack" onchange="applySettings()">
+          <option value="5">5s</option>
+          <option value="10">10s</option>
+          <option value="15" selected>15s</option>
+          <option value="30">30s</option>
+          <option value="60">60s</option>
+        </select>
+      </div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_skip_fwd">İleri Atla (saniye)</div>
+        </div>
+        <select class="s-select" id="s_skipForward" onchange="applySettings()">
+          <option value="10">10s</option>
+          <option value="15">15s</option>
+          <option value="30" selected>30s</option>
+          <option value="45">45s</option>
+          <option value="60">60s</option>
+          <option value="90">90s</option>
+        </select>
+      </div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_auto_next">Otomatik Sonraki Bölüm</div>
+        </div>
+        <label class="s-toggle">
+          <input type="checkbox" id="s_autoNext" checked onchange="applySettings()">
+          <span class="s-toggle-track"></span>
+        </label>
+      </div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_resume">Kaldığım Yerden Devam</div>
+        </div>
+        <label class="s-toggle">
+          <input type="checkbox" id="s_resumePos" checked onchange="applySettings()">
+          <span class="s-toggle-track"></span>
+        </label>
+      </div>
+    </div>
+
+    <hr class="s-divider">
+
+    <!-- Görünüm -->
+    <div>
+      <div class="s-section-title" data-i18n="s_appearance">Görünüm</div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_accent">Vurgu Rengi</div>
+        </div>
+      </div>
+      <div class="s-color-row" id="colorSwatches">
+        <div class="s-color-swatch active" style="background:#5b8af5" data-color="#5b8af5" onclick="setAccent(this)"></div>
+        <div class="s-color-swatch" style="background:#e06060" data-color="#e06060" onclick="setAccent(this)"></div>
+        <div class="s-color-swatch" style="background:#4ecb8d" data-color="#4ecb8d" onclick="setAccent(this)"></div>
+        <div class="s-color-swatch" style="background:#e0b84a" data-color="#e0b84a" onclick="setAccent(this)"></div>
+        <div class="s-color-swatch" style="background:#c87df5" data-color="#c87df5" onclick="setAccent(this)"></div>
+        <div class="s-color-swatch" style="background:#f5845b" data-color="#f5845b" onclick="setAccent(this)"></div>
+        <div class="s-color-swatch" style="background:#5be0e0" data-color="#5be0e0" onclick="setAccent(this)"></div>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="s-row">
+          <div>
+            <div class="s-label" data-i18n="s_font_size">Yazı Boyutu</div>
+          </div>
+          <select class="s-select" id="s_fontSize" onchange="applySettings()">
+            <option value="11px" data-i18n="size_small">Küçük</option>
+            <option value="13px" selected data-i18n="size_normal">Normal</option>
+            <option value="15px" data-i18n="size_large">Büyük</option>
+            <option value="17px" data-i18n="size_xlarge">Çok Büyük</option>
+          </select>
+        </div>
+
+        <div class="s-row">
+          <div>
+            <div class="s-label" data-i18n="s_row_height">Liste Satır Yüksekliği</div>
+          </div>
+          <select class="s-select" id="s_rowHeight" onchange="applySettings()">
+            <option value="42px" data-i18n="row_compact">Sıkı</option>
+            <option value="54px" selected>Normal</option>
+            <option value="66px" data-i18n="row_spacious">Geniş</option>
+          </select>
+        </div>
+
+        <div class="s-row">
+          <div>
+            <div class="s-label" data-i18n="s_theme_label">Karanlık / Açık Tema</div>
+          </div>
+          <select class="s-select" id="s_theme" onchange="applySettings()">
+            <option value="dark" selected data-i18n="theme_dark">Karanlık</option>
+            <option value="light" data-i18n="theme_light">Açık</option>
+            <option value="oled" data-i18n="theme_oled">OLED Siyah</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <hr class="s-divider">
+
+    <!-- Liste -->
+    <div>
+      <div class="s-section-title" data-i18n="s_list">Liste</div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_default_sort">Varsayılan Sıralama</div>
+        </div>
+        <select class="s-select" id="s_defaultSort" onchange="applySettings()">
+          <option value="asc" selected>Eskiden → Yeniye</option>
+          <option value="desc" data-i18n="sort_desc">Yeniden → Eskiye</option>
+        </select>
+      </div>
+
+      <div class="s-row">
+        <div>
+          <div class="s-label" data-i18n="s_show_dl">İndirme Butonu Göster</div>
+        </div>
+        <label class="s-toggle">
+          <input type="checkbox" id="s_showDl" checked onchange="applySettings()">
+          <span class="s-toggle-track"></span>
+        </label>
+      </div>
+    </div>
+
+
+    <hr class="s-divider">
+
+    <!-- Dil / Language -->
+    <div>
+      <div class="s-section-title" data-i18n="s_lang_title">Dil / Language</div>
+      <div class="s-row">
+        <div><div class="s-label" data-i18n="s_lang_label">Arayüz Dili</div></div>
+        <select class="s-select" id="s_lang" onchange="applySettings()">
+          <option value="tr">🇹🇷 Türkçe</option>
+          <option value="en">🇬🇧 English</option>
+          <option value="de">🇩🇪 Deutsch</option>
+          <option value="fr">🇫🇷 Français</option>
+          <option value="es">🇪🇸 Español</option>
+          <option value="ar">🇸🇦 العربية</option>
+          <option value="ja">🇯🇵 日本語</option>
+          <option value="ru">🇷🇺 Русский</option>
+        </select>
+      </div>
+    </div>
+
+    <hr class="s-divider">
+
+    <!-- Veri -->
+    <div>
+      <div class="s-section-title" data-i18n="s_data">Veri</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="s-btn danger" onclick="clearProgress()" data-i18n="btn_clear_progress">🗑 Tüm İlerlemeyi Sıfırla</button>
+        <button class="s-btn danger" onclick="clearAll()" data-i18n="btn_clear_all">🗑 Tüm Verileri Temizle</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════
+// INTERNATIONALISATION (i18n)
+// ═══════════════════════════════════════
+const LANGS = {
+  tr: {
+    brand_sub: 'Ücretsiz · Üyeliksiz · iTunes API',
+    search_placeholder: 'Podcast adı veya Apple Podcasts linki...',
+    search_hint: "Örnek: Merdiven Altı Terapi · Barış Özcan ile 111 Hz",
+    btn_search: 'Ara →', btn_back: '← Geri', now_playing: '▶ ŞU AN ÇALIYOR',
+    pick_episode: 'Bir bölüm seçin', btn_prev: '⏮ Önceki', btn_next: 'Sonraki ⏭',
+    btn_sort: '⇅ Sıra', filter_placeholder: 'Bölüm ara...', settings_title: 'Ayarlar',
+    settings_heading: '⚙ Ayarlar', sort_asc_label: 'Eskiden → Yeniye', sort_desc_label: 'Yeniden → Eskiye',
+    ep_saved_badge: '⏸ kaldığın yer', dl_btn: '⬇', status_loading: 'Bölümler yükleniyor...',
+    status_ok: (n) => `${n} bölüm yüklendi ✓`, status_err: 'Hata: ', searching: 'Aranıyor...',
+    no_results: 'Sonuç bulunamadı.', ep_count_unit: 'bölüm', ep_not_found: 'Bölüm bulunamadı.',
+    loading_eps: 'Yükleniyor...', retry: 'F5 ile yenileyin.',
+    confirm_clear_progress: 'Tüm bölüm ilerlemeleri silinecek. Emin misin?',
+    confirm_clear_all: 'Tüm ayarlar ve ilerleme silinecek. Emin misin?',
+    dl_not_found: 'İndirme linki bulunamadı.',
+    s_lang_title: 'Dil / Language', s_lang_label: 'Arayüz Dili', s_playback: 'Oynatma',
+    s_default_speed: 'Varsayılan Hız', s_speed_sub: 'Bölümler arası korunur',
+    s_skip_back: 'Geri Atla (saniye)', s_skip_fwd: 'İleri Atla (saniye)',
+    s_auto_next: 'Otomatik Sonraki Bölüm', s_resume: 'Kaldığım Yerden Devam',
+    s_appearance: 'Görünüm', s_accent: 'Vurgu Rengi', s_font_size: 'Yazı Boyutu',
+    s_row_height: 'Liste Satır Yüksekliği', s_theme_label: 'Tema', s_list: 'Liste',
+    s_default_sort: 'Varsayılan Sıralama', s_show_dl: 'İndirme Butonu Göster', s_data: 'Veri',
+    btn_clear_progress: '🗑 Tüm İlerlemeyi Sıfırla', btn_clear_all: '🗑 Tüm Verileri Temizle',
+    theme_dark: 'Karanlık', theme_light: 'Açık', theme_oled: 'OLED Siyah',
+    size_small: 'Küçük', size_normal: 'Normal', size_large: 'Büyük', size_xlarge: 'Çok Büyük',
+    row_compact: 'Sıkı', row_spacious: 'Geniş',
+    sort_asc: 'Eskiden → Yeniye', sort_desc: 'Yeniden → Eskiye', dir: 'ltr',
+  },
+  en: {
+    brand_sub: 'Free · No Account · iTunes API',
+    search_placeholder: 'Podcast name or Apple Podcasts link...',
+    search_hint: 'e.g. Serial · Radiolab · or paste an Apple Podcasts URL',
+    btn_search: 'Search →', btn_back: '← Back', now_playing: '▶ NOW PLAYING',
+    pick_episode: 'Select an episode', btn_prev: '⏮ Previous', btn_next: 'Next ⏭',
+    btn_sort: '⇅ Order', filter_placeholder: 'Filter episodes...', settings_title: 'Settings',
+    settings_heading: '⚙ Settings', sort_asc_label: 'Oldest → Newest', sort_desc_label: 'Newest → Oldest',
+    ep_saved_badge: '⏸ resume', dl_btn: '⬇', status_loading: 'Loading episodes...',
+    status_ok: (n) => `${n} episodes loaded ✓`, status_err: 'Error: ', searching: 'Searching...',
+    no_results: 'No results found.', ep_count_unit: 'eps', ep_not_found: 'No episodes found.',
+    loading_eps: 'Loading...', retry: 'Press F5 to retry.',
+    confirm_clear_progress: 'All episode progress will be deleted. Are you sure?',
+    confirm_clear_all: 'All settings and progress will be deleted. Are you sure?',
+    dl_not_found: 'Download link not found.',
+    s_lang_title: 'Language', s_lang_label: 'Interface Language', s_playback: 'Playback',
+    s_default_speed: 'Default Speed', s_speed_sub: 'Preserved between episodes',
+    s_skip_back: 'Skip Back (seconds)', s_skip_fwd: 'Skip Forward (seconds)',
+    s_auto_next: 'Auto-play Next Episode', s_resume: 'Resume from Last Position',
+    s_appearance: 'Appearance', s_accent: 'Accent Color', s_font_size: 'Font Size',
+    s_row_height: 'List Row Height', s_theme_label: 'Theme', s_list: 'List',
+    s_default_sort: 'Default Sort Order', s_show_dl: 'Show Download Button', s_data: 'Data',
+    btn_clear_progress: '🗑 Clear All Progress', btn_clear_all: '🗑 Clear All Data',
+    theme_dark: 'Dark', theme_light: 'Light', theme_oled: 'OLED Black',
+    size_small: 'Small', size_normal: 'Normal', size_large: 'Large', size_xlarge: 'X-Large',
+    row_compact: 'Compact', row_spacious: 'Spacious',
+    sort_asc: 'Oldest → Newest', sort_desc: 'Newest → Oldest', dir: 'ltr',
+  },
+  de: {
+    brand_sub: 'Kostenlos · Kein Konto · iTunes API',
+    search_placeholder: 'Podcast-Name oder Apple Podcasts Link...',
+    search_hint: 'z.B. Fest & Flauschig · oder Apple Podcasts URL einfügen',
+    btn_search: 'Suchen →', btn_back: '← Zurück', now_playing: '▶ JETZT LÄUFT',
+    pick_episode: 'Episode auswählen', btn_prev: '⏮ Vorherige', btn_next: 'Nächste ⏭',
+    btn_sort: '⇅ Sortieren', filter_placeholder: 'Episoden filtern...', settings_title: 'Einstellungen',
+    settings_heading: '⚙ Einstellungen', sort_asc_label: 'Älteste → Neueste', sort_desc_label: 'Neueste → Älteste',
+    ep_saved_badge: '⏸ fortsetzen', dl_btn: '⬇', status_loading: 'Episoden werden geladen...',
+    status_ok: (n) => `${n} Episoden geladen ✓`, status_err: 'Fehler: ', searching: 'Suche läuft...',
+    no_results: 'Keine Ergebnisse gefunden.', ep_count_unit: 'Folgen', ep_not_found: 'Keine Episoden gefunden.',
+    loading_eps: 'Lädt...', retry: 'F5 zum Wiederholen.',
+    confirm_clear_progress: 'Alle Episodenfortschritte werden gelöscht. Sicher?',
+    confirm_clear_all: 'Alle Einstellungen und Fortschritte werden gelöscht. Sicher?',
+    dl_not_found: 'Download-Link nicht gefunden.',
+    s_lang_title: 'Sprache', s_lang_label: 'Oberflächensprache', s_playback: 'Wiedergabe',
+    s_default_speed: 'Standardgeschwindigkeit', s_speed_sub: 'Zwischen Episoden gespeichert',
+    s_skip_back: 'Zurückspulen (Sekunden)', s_skip_fwd: 'Vorspulen (Sekunden)',
+    s_auto_next: 'Nächste Episode automatisch', s_resume: 'Ab letzter Position fortsetzen',
+    s_appearance: 'Darstellung', s_accent: 'Akzentfarbe', s_font_size: 'Schriftgröße',
+    s_row_height: 'Zeilenhöhe', s_theme_label: 'Design', s_list: 'Liste',
+    s_default_sort: 'Standardsortierung', s_show_dl: 'Download-Schaltfläche anzeigen', s_data: 'Daten',
+    btn_clear_progress: '🗑 Alle Fortschritte löschen', btn_clear_all: '🗑 Alle Daten löschen',
+    theme_dark: 'Dunkel', theme_light: 'Hell', theme_oled: 'OLED Schwarz',
+    size_small: 'Klein', size_normal: 'Normal', size_large: 'Groß', size_xlarge: 'Sehr groß',
+    row_compact: 'Kompakt', row_spacious: 'Großzügig',
+    sort_asc: 'Älteste → Neueste', sort_desc: 'Neueste → Älteste', dir: 'ltr',
+  },
+  fr: {
+    brand_sub: 'Gratuit · Sans compte · iTunes API',
+    search_placeholder: 'Nom du podcast ou lien Apple Podcasts...',
+    search_hint: "ex. France Inter · ou collez une URL Apple Podcasts",
+    btn_search: 'Chercher →', btn_back: '← Retour', now_playing: '▶ EN COURS',
+    pick_episode: 'Sélectionner un épisode', btn_prev: '⏮ Précédent', btn_next: 'Suivant ⏭',
+    btn_sort: '⇅ Trier', filter_placeholder: 'Filtrer les épisodes...', settings_title: 'Paramètres',
+    settings_heading: '⚙ Paramètres', sort_asc_label: 'Du plus ancien au plus récent', sort_desc_label: 'Du plus récent au plus ancien',
+    ep_saved_badge: '⏸ reprendre', dl_btn: '⬇', status_loading: 'Chargement des épisodes...',
+    status_ok: (n) => `${n} épisodes chargés ✓`, status_err: 'Erreur : ', searching: 'Recherche en cours...',
+    no_results: 'Aucun résultat trouvé.', ep_count_unit: 'éps', ep_not_found: 'Aucun épisode trouvé.',
+    loading_eps: 'Chargement...', retry: 'Appuyez sur F5 pour réessayer.',
+    confirm_clear_progress: 'Toute la progression sera supprimée. Confirmer ?',
+    confirm_clear_all: 'Tous les paramètres et la progression seront supprimés. Confirmer ?',
+    dl_not_found: 'Lien de téléchargement introuvable.',
+    s_lang_title: 'Langue', s_lang_label: "Langue de l'interface", s_playback: 'Lecture',
+    s_default_speed: 'Vitesse par défaut', s_speed_sub: 'Conservée entre les épisodes',
+    s_skip_back: 'Retour rapide (secondes)', s_skip_fwd: 'Avance rapide (secondes)',
+    s_auto_next: 'Épisode suivant automatique', s_resume: 'Reprendre depuis la dernière position',
+    s_appearance: 'Apparence', s_accent: "Couleur d'accentuation", s_font_size: 'Taille de police',
+    s_row_height: 'Hauteur des lignes', s_theme_label: 'Thème', s_list: 'Liste',
+    s_default_sort: 'Tri par défaut', s_show_dl: 'Afficher le bouton de téléchargement', s_data: 'Données',
+    btn_clear_progress: '🗑 Effacer toute la progression', btn_clear_all: '🗑 Effacer toutes les données',
+    theme_dark: 'Sombre', theme_light: 'Clair', theme_oled: 'OLED Noir',
+    size_small: 'Petit', size_normal: 'Normal', size_large: 'Grand', size_xlarge: 'Très grand',
+    row_compact: 'Compact', row_spacious: 'Spacieux',
+    sort_asc: 'Du plus ancien', sort_desc: 'Du plus récent', dir: 'ltr',
+  },
+  es: {
+    brand_sub: 'Gratis · Sin cuenta · iTunes API',
+    search_placeholder: 'Nombre del podcast o enlace de Apple Podcasts...',
+    search_hint: 'p.ej. Nadie Sabe Nada · o pega una URL de Apple Podcasts',
+    btn_search: 'Buscar →', btn_back: '← Volver', now_playing: '▶ REPRODUCIENDO',
+    pick_episode: 'Selecciona un episodio', btn_prev: '⏮ Anterior', btn_next: 'Siguiente ⏭',
+    btn_sort: '⇅ Ordenar', filter_placeholder: 'Filtrar episodios...', settings_title: 'Ajustes',
+    settings_heading: '⚙ Ajustes', sort_asc_label: 'Más antiguo → Más reciente', sort_desc_label: 'Más reciente → Más antiguo',
+    ep_saved_badge: '⏸ continuar', dl_btn: '⬇', status_loading: 'Cargando episodios...',
+    status_ok: (n) => `${n} episodios cargados ✓`, status_err: 'Error: ', searching: 'Buscando...',
+    no_results: 'No se encontraron resultados.', ep_count_unit: 'eps', ep_not_found: 'No se encontraron episodios.',
+    loading_eps: 'Cargando...', retry: 'Pulsa F5 para reintentar.',
+    confirm_clear_progress: 'Se eliminará todo el progreso. ¿Estás seguro?',
+    confirm_clear_all: 'Se eliminarán todos los ajustes y el progreso. ¿Estás seguro?',
+    dl_not_found: 'Enlace de descarga no encontrado.',
+    s_lang_title: 'Idioma', s_lang_label: 'Idioma de la interfaz', s_playback: 'Reproducción',
+    s_default_speed: 'Velocidad predeterminada', s_speed_sub: 'Se conserva entre episodios',
+    s_skip_back: 'Retroceder (segundos)', s_skip_fwd: 'Avanzar (segundos)',
+    s_auto_next: 'Reproducir siguiente automáticamente', s_resume: 'Reanudar desde la última posición',
+    s_appearance: 'Apariencia', s_accent: 'Color de acento', s_font_size: 'Tamaño de fuente',
+    s_row_height: 'Altura de fila', s_theme_label: 'Tema', s_list: 'Lista',
+    s_default_sort: 'Orden predeterminado', s_show_dl: 'Mostrar botón de descarga', s_data: 'Datos',
+    btn_clear_progress: '🗑 Borrar todo el progreso', btn_clear_all: '🗑 Borrar todos los datos',
+    theme_dark: 'Oscuro', theme_light: 'Claro', theme_oled: 'OLED Negro',
+    size_small: 'Pequeño', size_normal: 'Normal', size_large: 'Grande', size_xlarge: 'Muy grande',
+    row_compact: 'Compacto', row_spacious: 'Espacioso',
+    sort_asc: 'Más antiguo → Más reciente', sort_desc: 'Más reciente → Más antiguo', dir: 'ltr',
+  },
+  ar: {
+    brand_sub: 'مجاني · بدون حساب · iTunes API',
+    search_placeholder: 'اسم البودكاست أو رابط Apple Podcasts...',
+    search_hint: 'مثال: بودكاست عربي · أو الصق رابط Apple Podcasts',
+    btn_search: '← بحث', btn_back: 'رجوع →', now_playing: '▶ يُشغَّل الآن',
+    pick_episode: 'اختر حلقة', btn_prev: '⏮ السابقة', btn_next: 'التالية ⏭',
+    btn_sort: '⇅ ترتيب', filter_placeholder: 'تصفية الحلقات...', settings_title: 'الإعدادات',
+    settings_heading: '⚙ الإعدادات', sort_asc_label: 'الأقدم → الأحدث', sort_desc_label: 'الأحدث → الأقدم',
+    ep_saved_badge: '⏸ استئناف', dl_btn: '⬇', status_loading: 'جارٍ تحميل الحلقات...',
+    status_ok: (n) => `تم تحميل ${n} حلقة ✓`, status_err: 'خطأ: ', searching: 'جارٍ البحث...',
+    no_results: 'لم يتم العثور على نتائج.', ep_count_unit: 'حلقة', ep_not_found: 'لا توجد حلقات.',
+    loading_eps: 'جارٍ التحميل...', retry: 'اضغط F5 للمحاولة مجدداً.',
+    confirm_clear_progress: 'سيتم حذف كل التقدم. هل أنت متأكد؟',
+    confirm_clear_all: 'سيتم حذف كل الإعدادات والتقدم. هل أنت متأكد؟',
+    dl_not_found: 'لم يتم العثور على رابط التحميل.',
+    s_lang_title: 'اللغة', s_lang_label: 'لغة الواجهة', s_playback: 'التشغيل',
+    s_default_speed: 'السرعة الافتراضية', s_speed_sub: 'محفوظة بين الحلقات',
+    s_skip_back: 'تخطي للخلف (ثوانٍ)', s_skip_fwd: 'تخطي للأمام (ثوانٍ)',
+    s_auto_next: 'تشغيل الحلقة التالية تلقائياً', s_resume: 'استئناف من آخر موضع',
+    s_appearance: 'المظهر', s_accent: 'لون التمييز', s_font_size: 'حجم الخط',
+    s_row_height: 'ارتفاع الصف', s_theme_label: 'السمة', s_list: 'القائمة',
+    s_default_sort: 'الترتيب الافتراضي', s_show_dl: 'إظهار زر التحميل', s_data: 'البيانات',
+    btn_clear_progress: '🗑 مسح كل التقدم', btn_clear_all: '🗑 مسح جميع البيانات',
+    theme_dark: 'داكن', theme_light: 'فاتح', theme_oled: 'OLED أسود',
+    size_small: 'صغير', size_normal: 'عادي', size_large: 'كبير', size_xlarge: 'كبير جداً',
+    row_compact: 'مضغوط', row_spacious: 'واسع',
+    sort_asc: 'الأقدم → الأحدث', sort_desc: 'الأحدث → الأقدم', dir: 'rtl',
+  },
+  ja: {
+    brand_sub: '無料 · アカウント不要 · iTunes API',
+    search_placeholder: 'ポッドキャスト名またはApple Podcastsリンク...',
+    search_hint: '例: COTEN RADIO · またはApple PodcastsのURLを貼り付け',
+    btn_search: '検索 →', btn_back: '← 戻る', now_playing: '▶ 再生中',
+    pick_episode: 'エピソードを選択', btn_prev: '⏮ 前へ', btn_next: '次へ ⏭',
+    btn_sort: '⇅ 並替', filter_placeholder: 'エピソードを絞り込む...', settings_title: '設定',
+    settings_heading: '⚙ 設定', sort_asc_label: '古い順', sort_desc_label: '新しい順',
+    ep_saved_badge: '⏸ 再開', dl_btn: '⬇', status_loading: 'エピソードを読み込み中...',
+    status_ok: (n) => `${n}件読み込み完了 ✓`, status_err: 'エラー: ', searching: '検索中...',
+    no_results: '結果が見つかりませんでした。', ep_count_unit: '件', ep_not_found: 'エピソードが見つかりません。',
+    loading_eps: '読み込み中...', retry: 'F5 で再試行してください。',
+    confirm_clear_progress: '再生履歴をすべて削除します。よろしいですか？',
+    confirm_clear_all: 'すべての設定と履歴を削除します。よろしいですか？',
+    dl_not_found: 'ダウンロードリンクが見つかりません。',
+    s_lang_title: '言語', s_lang_label: '表示言語', s_playback: '再生',
+    s_default_speed: 'デフォルト速度', s_speed_sub: 'エピソード間で保持',
+    s_skip_back: '巻き戻し（秒）', s_skip_fwd: '早送り（秒）',
+    s_auto_next: '次のエピソードを自動再生', s_resume: '前回の位置から再開',
+    s_appearance: '外観', s_accent: 'アクセントカラー', s_font_size: 'フォントサイズ',
+    s_row_height: '行の高さ', s_theme_label: 'テーマ', s_list: 'リスト',
+    s_default_sort: 'デフォルトの並び順', s_show_dl: 'ダウンロードボタンを表示', s_data: 'データ',
+    btn_clear_progress: '🗑 再生履歴をリセット', btn_clear_all: '🗑 すべてのデータを削除',
+    theme_dark: 'ダーク', theme_light: 'ライト', theme_oled: 'OLED ブラック',
+    size_small: '小', size_normal: '中', size_large: '大', size_xlarge: '特大',
+    row_compact: 'コンパクト', row_spacious: '広め',
+    sort_asc: '古い順', sort_desc: '新しい順', dir: 'ltr',
+  },
+  ru: {
+    brand_sub: 'Бесплатно · Без аккаунта · iTunes API',
+    search_placeholder: 'Название подкаста или ссылка Apple Podcasts...',
+    search_hint: 'например: Медуза · или вставьте ссылку Apple Podcasts',
+    btn_search: 'Найти →', btn_back: '← Назад', now_playing: '▶ СЕЙЧАС ИГРАЕТ',
+    pick_episode: 'Выберите эпизод', btn_prev: '⏮ Назад', btn_next: 'Вперёд ⏭',
+    btn_sort: '⇅ Сортировка', filter_placeholder: 'Поиск эпизодов...', settings_title: 'Настройки',
+    settings_heading: '⚙ Настройки', sort_asc_label: 'Сначала старые', sort_desc_label: 'Сначала новые',
+    ep_saved_badge: '⏸ продолжить', dl_btn: '⬇', status_loading: 'Загрузка эпизодов...',
+    status_ok: (n) => `Загружено ${n} эпизодов ✓`, status_err: 'Ошибка: ', searching: 'Поиск...',
+    no_results: 'Ничего не найдено.', ep_count_unit: 'эп.', ep_not_found: 'Эпизоды не найдены.',
+    loading_eps: 'Загрузка...', retry: 'Нажмите F5 для повтора.',
+    confirm_clear_progress: 'Весь прогресс будет удалён. Вы уверены?',
+    confirm_clear_all: 'Все настройки и прогресс будут удалены. Вы уверены?',
+    dl_not_found: 'Ссылка для скачивания не найдена.',
+    s_lang_title: 'Язык', s_lang_label: 'Язык интерфейса', s_playback: 'Воспроизведение',
+    s_default_speed: 'Скорость по умолчанию', s_speed_sub: 'Сохраняется между эпизодами',
+    s_skip_back: 'Перемотка назад (сек)', s_skip_fwd: 'Перемотка вперёд (сек)',
+    s_auto_next: 'Автовоспроизведение следующего', s_resume: 'Возобновить с последней позиции',
+    s_appearance: 'Внешний вид', s_accent: 'Акцентный цвет', s_font_size: 'Размер шрифта',
+    s_row_height: 'Высота строки', s_theme_label: 'Тема', s_list: 'Список',
+    s_default_sort: 'Сортировка по умолчанию', s_show_dl: 'Показать кнопку загрузки', s_data: 'Данные',
+    btn_clear_progress: '🗑 Сбросить прогресс', btn_clear_all: '🗑 Удалить все данные',
+    theme_dark: 'Тёмная', theme_light: 'Светлая', theme_oled: 'OLED Чёрная',
+    size_small: 'Маленький', size_normal: 'Обычный', size_large: 'Большой', size_xlarge: 'Очень большой',
+    row_compact: 'Компактный', row_spacious: 'Просторный',
+    sort_asc: 'Сначала старые', sort_desc: 'Сначала новые', dir: 'ltr',
+  },
+};
+// Active translations
+let T = LANGS['tr'];
+
+function t(key, ...args) {
+  const val = T[key];
+  if (typeof val === 'function') return val(...args);
+  return val ?? key;
+}
+
+function applyLang(lang) {
+  T = LANGS[lang] || LANGS['tr'];
+  // RTL support
+  document.documentElement.setAttribute('dir', T.dir || 'ltr');
+  // Update all data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (T[key] !== undefined && typeof T[key] !== 'function') el.textContent = T[key];
+  });
+  // Placeholders
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    const key = el.dataset.i18nPh;
+    if (T[key]) el.placeholder = T[key];
+  });
+  // Titles
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (T[key]) el.title = T[key];
+  });
+  // Update dynamic labels
+  if (elSortInfo) elSortInfo.textContent = sortAsc ? t('sort_asc_label') : t('sort_desc_label');
+  if (elNowTitle && (elNowTitle.textContent === 'Bir bölüm seçin' || elNowTitle.textContent === T['pick_episode'])) {
+    elNowTitle.textContent = t('pick_episode');
+  }
+  // Sync both lang selectors
+  const hl = document.getElementById('homeLangSel');
+  if (hl) hl.value = lang;
+  const sl = document.getElementById('s_lang');
+  if (sl) sl.value = lang;
+}
+
+function onHomeLangChange() {
+  const lang = document.getElementById('homeLangSel').value;
+  S.lang = lang;
+  const sl = document.getElementById('s_lang');
+  if (sl) sl.value = lang;
+  applyLang(lang);
+  saveState();
+}
+
+// ═══════════════════════════════════════
+// SAFE localStorage WRAPPER
+// ═══════════════════════════════════════
+const store = {
+  get(key, fallback = null) {
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : fallback; }
+    catch { return fallback; }
+  },
+  set(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); }
+    catch(e) { console.warn('storage write failed:', key, e.name); }
+  },
+  rawGet(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  rawSet(key, val) { try { localStorage.setItem(key, val); } catch { /* quota/private */ } },
+};
+
+// ═══════════════════════════════════════
+// XSS-SAFE TEXT ESCAPING
+// ═══════════════════════════════════════
+const _escMap = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#x27;' };
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => _escMap[c]);
+}
+
+// ═══════════════════════════════════════
+// DOM CACHE
+// ═══════════════════════════════════════
+const $ = id => document.getElementById(id);
+const audio          = $('audio');
+const elDot          = $('dot');
+const elStatusText   = $('statusText');
+const elNowTitle     = $('nowTitle');
+const elProgressFill = $('progressFill');
+const elProgressWrap = $('progressWrap');
+const elTCur         = $('tCur');
+const elTTot         = $('tTot');
+const elBtnPlay      = $('btnPlay');
+const elBtnPrev      = $('btnPrev');
+const elBtnNext      = $('btnNext');
+const elSpeedSel     = $('speedSel');
+const elSortInfo     = $('sortInfo');
+const elEpList       = $('epList');
+const elPEpCount     = $('pEpCount');
+const elLblSkipBack  = $('lblSkipBack');
+const elLblSkipFwd   = $('lblSkipFwd');
+const elFilterInput  = $('filterInput');
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let episodes = [], filteredEps = [], currentIndex = -1, sortAsc = true;
+let currentPodcastId = null;
+let prog = {};
+
+let S = {
+  defaultSpeed: 1,
+  skipBack: 15,
+  skipForward: 30,
+  autoNext: true,
+  resumePos: true,
+  fontSize: '13px',
+  rowHeight: '54px',
+  theme: 'dark',
+  defaultSort: 'asc',
+  showDl: true,
+  accentColor: '#5b8af5',
+  lang: 'tr',
+};
+
+function loadState() {
+  prog = store.get('pp_prog', {});
+  // Merge saved settings — only known keys, typed correctly
+  const saved = store.get('pp_settings', {});
+  if (saved && typeof saved === 'object') {
+    for (const k of Object.keys(S)) {
+      if (k in saved && typeof saved[k] === typeof S[k]) S[k] = saved[k];
+    }
+  }
+}
+
+// Throttled progress save: at most once per 5 s while playing
+let _saveTimer = null;
+function saveState() {
+  store.set('pp_settings', S);
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => { store.set('pp_prog', prog); _saveTimer = null; }, 5000);
+}
+function saveStateNow() {
+  clearTimeout(_saveTimer); _saveTimer = null;
+  store.set('pp_prog', prog);
+  store.set('pp_settings', S);
+}
+window.addEventListener('beforeunload', saveStateNow);
+window.addEventListener('pagehide',     saveStateNow);
+
+// ═══════════════════════════════════════
+// SETTINGS PANEL
+// ═══════════════════════════════════════
+function openSettings() {
+  $('s_defaultSpeed').value  = S.defaultSpeed;
+  $('s_skipBack').value      = S.skipBack;
+  $('s_skipForward').value   = S.skipForward;
+  $('s_autoNext').checked    = S.autoNext;
+  $('s_resumePos').checked   = S.resumePos;
+  $('s_fontSize').value      = S.fontSize;
+  $('s_rowHeight').value     = S.rowHeight;
+  $('s_theme').value         = S.theme;
+  $('s_defaultSort').value   = S.defaultSort;
+  $('s_showDl').checked      = S.showDl;
+  $('s_lang').value          = S.lang;
+  document.querySelectorAll('.s-color-swatch').forEach(sw => {
+    sw.classList.toggle('active', sw.dataset.color === S.accentColor);
+  });
+  $('settingsOverlay').classList.add('open');
+  $('settingsPanel').classList.add('open');
+}
+
+function closeSettings() {
+  $('settingsOverlay').classList.remove('open');
+  $('settingsPanel').classList.remove('open');
+}
+
+function applySettings() {
+  S.defaultSpeed = parseFloat($('s_defaultSpeed').value) || 1;
+  S.skipBack     = parseInt($('s_skipBack').value)     || 15;
+  S.skipForward  = parseInt($('s_skipForward').value)  || 30;
+  S.autoNext     = $('s_autoNext').checked;
+  S.resumePos    = $('s_resumePos').checked;
+  S.fontSize     = $('s_fontSize').value;
+  S.rowHeight    = $('s_rowHeight').value;
+  S.theme        = $('s_theme').value;
+  S.defaultSort  = $('s_defaultSort').value;
+  S.showDl       = $('s_showDl').checked;
+  S.lang         = $('s_lang').value;
+
+  elLblSkipBack.textContent = S.skipBack;
+  elLblSkipFwd.textContent  = S.skipForward;
+
+  // Sync speed immediately to running audio
+  elSpeedSel.value = S.defaultSpeed;
+  audio.playbackRate = S.defaultSpeed;
+
+  document.documentElement.style.setProperty('--player-font-size', S.fontSize);
+  document.documentElement.style.setProperty('--list-row-height', S.rowHeight);
+  applyTheme(S.theme);
+  applyAccent(S.accentColor);
+  applyLang(S.lang);
+  saveState();
+  render(); // refresh dl-button visibility
+}
+
+function setAccent(el) {
+  document.querySelectorAll('.s-color-swatch').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  S.accentColor = el.dataset.color;
+  applyAccent(S.accentColor);
+  saveState();
+}
+
+function applyAccent(c) {
+  const r = parseInt(c.slice(1,3),16), g = parseInt(c.slice(3,5),16), b = parseInt(c.slice(5,7),16);
+  document.documentElement.style.setProperty('--accent', c);
+  document.documentElement.style.setProperty('--accent-dim', c);
+  document.documentElement.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.15)`);
+}
+
+function applyTheme(t) {
+  const themes = {
+    dark:  ['#111217','#16181f','#1c1e27','#222530','#2a2d3a','#333748','#e8eaf2','#9499b0','#5a5f78'],
+    oled:  ['#000000','#0a0a0a','#111111','#181818','#222222','#2a2a2a','#f0f0f0','#888888','#444444'],
+    light: ['#f4f5f7','#ecedf0','#ffffff','#f0f1f4','#dde0e8','#c8ccd8','#1a1d2e','#555870','#9094aa'],
+  };
+  const keys = ['--bg','--bg2','--surface','--surface2','--border','--border2','--text','--text2','--text3'];
+  const vals = themes[t] || themes.dark;
+  const root = document.documentElement;
+  keys.forEach((k,i) => root.style.setProperty(k, vals[i]));
+}
+
+function clearProgress() {
+  if (!confirm(t('confirm_clear_progress'))) return;
+  prog = {};
+  saveStateNow();
+  render();
+}
+
+function clearAll() {
+  if (!confirm(t('confirm_clear_all'))) return;
+  try { localStorage.clear(); } catch {}
+  location.reload();
+}
+
+// ═══════════════════════════════════════
+// SEARCH
+// ═══════════════════════════════════════
+// Abort controller for in-flight searches
+let _searchAbort = null;
+
+async function doSearch() {
+  const raw = $('searchInput').value.trim();
+  if (!raw) return;
+  const btn  = $('searchBtn');
+  const list = $('resultsList');
+
+  // Cancel any previous request
+  if (_searchAbort) { _searchAbort.abort(); }
+  _searchAbort = new AbortController();
+  const signal = _searchAbort.signal;
+
+  btn.disabled = true; btn.textContent = '...';
+  list.innerHTML = `<div class="empty-state">${esc(t('searching'))}</div>`;
+
+  const id = extractId(raw);
+  if (id) { btn.disabled=false; btn.textContent='Ara →'; loadPodcast(id); return; }
+
+  try {
+    const res  = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(raw)}&media=podcast&limit=8&country=tr`,
+      { signal }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    btn.disabled=false; btn.textContent='Ara →';
+    if (!data.results || !data.results.length) {
+      list.innerHTML=`<div class="empty-state">${esc(t('no_results'))}</div>`;
+      return;
+    }
+
+    // Build results with escaped strings — no XSS
+    const frag = document.createDocumentFragment();
+    for (const p of data.results) {
+      const div = document.createElement('div');
+      div.className = 'result-item';
+      div.innerHTML = `
+        <img class="result-thumb" src="${esc(p.artworkUrl100||'')}" alt="" loading="lazy" onerror="this.style.background='#333'">
+        <div class="result-info">
+          <div class="result-name">${esc(p.collectionName||'—')}</div>
+          <div class="result-author">${esc(p.artistName||'')}</div>
+          <div class="result-count">${esc(String(p.trackCount||'?'))} bölüm</div>
+        </div>
+        <div class="result-arrow">›</div>`;
+      // Attach event listener — no inline onclick with dynamic data
+      const cid = p.collectionId;
+      div.addEventListener('click', () => loadPodcast(cid));
+      frag.appendChild(div);
+    }
+    list.innerHTML = '';
+    list.appendChild(frag);
+
+  } catch(e) {
+    if (e.name === 'AbortError') return; // user started new search
+    btn.disabled=false; btn.textContent='Ara →';
+    list.innerHTML=`<div class="empty-state" style="color:var(--red)">Hata: ${esc(e.message)}</div>`;
+  }
+}
+
+function extractId(s) {
+  const m = s.match(/id(\d{6,12})/);
+  if (m) return m[1];
+  if (/^\d{6,12}$/.test(s.trim())) return s.trim();
+  return null;
+}
+
+// ═══════════════════════════════════════
+// LOAD PODCAST
+// ═══════════════════════════════════════
+async function loadPodcast(id) {
+  currentPodcastId = String(id);
+  $('searchScreen').style.display  = 'none';
+  $('playerScreen').style.display  = 'flex';
+
+  setStatus('loading', t('status_loading'));
+  elEpList.innerHTML = `<div class="empty-state">${esc(t('loading_eps'))}</div>`;
+  currentIndex = -1;
+  elNowTitle.textContent = t('pick_episode');
+
+  try {
+    const res = await fetch(
+      `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}&entity=podcastEpisode&limit=300&country=tr`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (!data.results || !Array.isArray(data.results)) throw new Error('Geçersiz API yanıtı.');
+
+    const meta = data.results.find(r => r.wrapperType==='collection' || r.kind==='podcast');
+    if (meta) {
+      $('pTitle').textContent  = meta.collectionName  || meta.trackName || '—';
+      $('pAuthor').textContent = meta.artistName || '';
+      $('pThumb').src          = meta.artworkUrl100  || '';
+      document.title           = `${meta.collectionName||'Podcast'} – Player`;
+    }
+
+    const eps = data.results.filter(r => r.wrapperType==='podcastEpisode' || r.kind==='podcast-episode');
+    if (!eps.length) throw new Error('Bölüm bulunamadı.');
+
+    // Pre-cache formatted dates (avoid repeated Date parsing in render)
+    for (const ep of eps) {
+      ep._fmtDate = fmtDate(ep.releaseDate);
+      ep._fmtDur  = fmtDur(ep.trackTimeMillis);
+    }
+
+    sortAsc  = (S.defaultSort === 'asc');
+    episodes = eps.sort((a,b) => new Date(a.releaseDate) - new Date(b.releaseDate));
+    if (!sortAsc) episodes.reverse();
+    elSortInfo.textContent = sortAsc ? t('sort_asc_label') : t('sort_desc_label');
+    filteredEps = episodes.slice();
+
+    elPEpCount.textContent = episodes.length;
+    setStatus('ok', t('status_ok', episodes.length));
+
+    elSpeedSel.value       = S.defaultSpeed;
+    audio.playbackRate     = S.defaultSpeed;
+
+    render();
+
+    const lastId = store.rawGet('pp_last_'+id);
+    if (lastId) {
+      const idx = episodes.findIndex(e => String(e.trackId) === lastId);
+      if (idx >= 0) loadEp(idx, false);
+    }
+  } catch(e) {
+    setStatus('error', t('status_err') + e.message);
+    elEpList.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}<br><br>${t('retry')}</div>`;
+  }
+}
+
+function goBack() {
+  audio.pause();
+  saveStateNow();
+  $('playerScreen').style.display = 'none';
+  $('searchScreen').style.display = 'flex';
+  episodes = []; filteredEps = []; currentIndex = -1;
+  elNowTitle.textContent = 'Bir bölüm seçin';
+  elProgressFill.style.width = '0%';
+  elTCur.textContent = '0:00';
+  elTTot.textContent = '0:00';
+  elBtnPlay.textContent = '▶';
+  elFilterInput.value = '';
+}
+
+// ═══════════════════════════════════════
+// SORT & FILTER (debounced)
+// ═══════════════════════════════════════
+function toggleSort() {
+  sortAsc = !sortAsc;
+  episodes.reverse();
+  filteredEps.reverse();
+  if (currentIndex >= 0) {
+    const activeId = filteredEps[currentIndex]?.trackId;
+    currentIndex = filteredEps.findIndex(e => e.trackId === activeId);
+  }
+  elSortInfo.textContent = sortAsc ? 'Eskiden → Yeniye' : 'Yeniden → Eskiye';
+  render();
+}
+
+let _filterTimer = null;
+function filterEps() {
+  clearTimeout(_filterTimer);
+  _filterTimer = setTimeout(() => {
+    const q = elFilterInput.value.trim().toLowerCase();
+    filteredEps = q
+      ? episodes.filter(e => (e.trackName||'').toLowerCase().includes(q))
+      : episodes.slice();
+    currentIndex = -1;
+    render();
+  }, 200); // 200 ms debounce
+}
+
+// ═══════════════════════════════════════
+// RENDER — incremental DOM update
+// ═══════════════════════════════════════
+function render() {
+  if (!filteredEps.length) {
+    elEpList.innerHTML = `<div class="empty-state">${esc(t('ep_not_found'))}</div>`;
+    return;
+  }
+
+  // Build new HTML string
+  const parts = new Array(filteredEps.length);
+  for (let i = 0; i < filteredEps.length; i++) {
+    const ep = filteredEps[i];
+    const id      = String(ep.trackId);
+    const hasSaved = S.resumePos && (prog[id]||0) > 5;
+    const active   = (i === currentIndex);
+    const dlBtn    = S.showDl
+      ? `<div class="ep-actions"><button class="ep-dl-btn" data-idx="${i}">⬇</button></div>`
+      : '';
+    parts[i] = `<div class="ep-item${active?' active':''}" data-idx="${i}">
+      <span class="ep-num">${i+1}</span>
+      <div class="ep-info">
+        <div class="ep-name">${esc(ep.trackName||'Bölüm '+(i+1))}</div>
+        <div class="ep-date-dur">${ep._fmtDate}${ep._fmtDur?' · '+ep._fmtDur:''}${hasSaved?` <span class="ep-saved-badge">${esc(t('ep_saved_badge'))}</span>`:''}</div>
+      </div>${dlBtn}</div>`;
+  }
+
+  elEpList.innerHTML = parts.join('');
+
+  // Scroll active into view
+  if (currentIndex >= 0) {
+    const el = elEpList.querySelector('.ep-item.active');
+    if (el) el.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  }
+}
+
+// Event delegation — single listener on the list instead of per-row handlers
+elEpList.addEventListener('click', e => {
+  // Download button
+  const dlBtn = e.target.closest('.ep-dl-btn');
+  if (dlBtn) { e.stopPropagation(); dlEp(parseInt(dlBtn.dataset.idx), dlBtn); return; }
+  // Episode row
+  const row = e.target.closest('.ep-item[data-idx]');
+  if (row) loadEp(parseInt(row.dataset.idx), true);
+});
+
+// ═══════════════════════════════════════
+// PLAYBACK
+// ═══════════════════════════════════════
+function loadEp(idx, autoplay) {
+  if (idx < 0 || idx >= filteredEps.length) return;
+  currentIndex = idx;
+  const ep  = filteredEps[idx];
+  const id  = String(ep.trackId);
+  const src = ep.episodeUrl || ep.previewUrl || '';
+
+  elNowTitle.textContent = ep.trackName || `Bölüm ${idx+1}`;
+  audio.src = src;
+  audio.load();
+
+  // Restore speed + position once browser has enough data
+  // Using 'canplay' guarantees playbackRate sticks (load() resets it)
+  audio.addEventListener('canplay', () => {
+    audio.playbackRate = S.defaultSpeed;
+    if (S.resumePos) {
+      const saved = prog[id] || 0;
+      if (saved > 5 && isFinite(audio.duration) && saved < audio.duration - 2) {
+        audio.currentTime = saved;
+      }
+    }
+  }, { once: true });
+
+  elSpeedSel.value = S.defaultSpeed;
+  elBtnPrev.disabled = (idx === 0);
+  elBtnNext.disabled = (idx === filteredEps.length - 1);
+  store.rawSet('pp_last_'+currentPodcastId, id);
+
+  render(); // update active highlight
+
+  if (autoplay) audio.play().catch(() => {});
+}
+
+function togglePlay() {
+  if (!audio.src) return;
+  if (audio.paused) audio.play().catch(() => {});
+  else audio.pause();
+}
+
+function seekRel(s) {
+  if (!audio.src) return;
+  audio.currentTime = Math.max(0, Math.min(audio.currentTime + s, audio.duration || 0));
+}
+
+function prevEp() { if (currentIndex > 0) loadEp(currentIndex-1, !audio.paused); }
+function nextEp() { if (currentIndex < filteredEps.length-1) loadEp(currentIndex+1, !audio.paused); }
+
+function changeSpeed() {
+  S.defaultSpeed = parseFloat(elSpeedSel.value) || 1;
+  audio.playbackRate = S.defaultSpeed;
+  $('s_defaultSpeed').value = S.defaultSpeed;
+  saveState();
+}
+
+// Progress bar — click
+elProgressWrap.addEventListener('click', e => {
+  if (!audio.duration) return;
+  const rect = elProgressWrap.getBoundingClientRect();
+  audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
+});
+
+// timeupdate — throttled to ~4 fps for DOM updates; progress saved via saveState throttle
+let _lastUiUpdate = 0;
+audio.addEventListener('timeupdate', () => {
+  const now = performance.now();
+  if (now - _lastUiUpdate < 250) return; // ~4 fps is plenty for a time display
+  _lastUiUpdate = now;
+
+  const cur = audio.currentTime, dur = audio.duration;
+  const pct = dur ? (cur / dur * 100) : 0;
+  elProgressFill.style.width = pct + '%';
+  elTCur.textContent = fmtTime(cur);
+  elTTot.textContent = fmtTime(dur);
+
+  if (currentIndex >= 0 && cur > 5 && filteredEps[currentIndex]) {
+    prog[String(filteredEps[currentIndex].trackId)] = cur;
+    saveState(); // throttled — won't spam localStorage
+  }
+});
+
+audio.addEventListener('ended', () => {
+  if (S.autoNext && currentIndex < filteredEps.length-1) loadEp(currentIndex+1, true);
+});
+audio.addEventListener('play',  () => { elBtnPlay.textContent = '⏸'; });
+audio.addEventListener('pause', () => { elBtnPlay.textContent = '▶'; });
+
+// ═══════════════════════════════════════
+// DOWNLOAD
+// ═══════════════════════════════════════
+function dlEp(idx, btn) {
+  const ep  = filteredEps[idx];
+  const src = ep?.episodeUrl || ep?.previewUrl || '';
+  if (!src) { alert(t('dl_not_found')); return; }
+  btn.textContent = '⏳';
+  // Sanitize filename: keep letters (including Turkish), digits, spaces, dashes
+  const name = (ep.trackName||'bolum')
+    .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
+    .trim()
+    .substring(0, 80) || 'bolum';
+  const a = document.createElement('a');
+  a.href = src;
+  a.download = name + '.mp3';
+  a.rel = 'noopener noreferrer';
+  a.target = '_blank';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => { btn.textContent='✓'; btn.className='ep-dl-btn done'; }, 1000);
+}
+
+// ═══════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════
+function setStatus(type, txt) {
+  elDot.className = 'dot ' + type;
+  elStatusText.textContent = txt;
+}
+
+const _dateCache = new Map();
+function fmtDate(s) {
+  if (!s) return '';
+  if (_dateCache.has(s)) return _dateCache.get(s);
+  try {
+    const r = new Date(s).toLocaleDateString('tr-TR', {day:'2-digit',month:'2-digit',year:'numeric'});
+    _dateCache.set(s, r);
+    return r;
+  } catch { return ''; }
+}
+
+function fmtDur(ms) {
+  if (!ms) return '';
+  const s = Math.floor(ms/1000), h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+  return h > 0 ? `${h}sa ${String(m).padStart(2,'0')}dk` : `${m}dk`;
+}
+
+function fmtTime(s) {
+  if (!Number.isFinite(s) || isNaN(s)) return '0:00';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+  return h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+    : `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+loadState();
+applyTheme(S.theme);
+applyAccent(S.accentColor);
+applyLang(S.lang);
+document.documentElement.style.setProperty('--player-font-size', S.fontSize);
+document.documentElement.style.setProperty('--list-row-height',  S.rowHeight);
+elLblSkipBack.textContent = S.skipBack;
+elLblSkipFwd.textContent  = S.skipForward;
+elSpeedSel.value          = S.defaultSpeed;
+$('searchInput').focus();
+</script>
+
+<script>
+// ── Service Worker kaydı ──────────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg  => console.log('[SW] kayıt OK, scope:', reg.scope))
+      .catch(err => console.warn('[SW] kayıt başarısız:', err));
+  });
+}
+</script>
+</body>
+</html>
