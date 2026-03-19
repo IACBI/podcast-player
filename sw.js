@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE = 'podcast-player-v1';
+const CACHE = 'podcast-player-v2'; // bump on each significant deployment
 const PRECACHE = ['/', '/index.html', '/manifest.json'];
 
 // ── Install: pre-cache shell assets ──────────────────────────────────────

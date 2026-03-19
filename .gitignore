@@ -1,7 +1,19 @@
 node_modules/
+dist/
 .DS_Store
 *.log
 npm-debug.log*
 .env
+.env.*
 .vscode/
 thumbs.db
+# Keystore & sertifika — asla commit etme
+*.jks
+*.keystore
+*.p12
+*.pfx
+# Gradle şifreler
+gradle.properties
+# IDE
+.idea/
+*.iml

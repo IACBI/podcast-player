@@ -3,6 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Content Security Policy
+     unsafe-inline: inline <style> ve onclick handler'lar için zorunlu.
+     Nonce tabanlı alternatif: script-src 'nonce-{random}' ile her sayfa yüklemesinde
+     benzersiz token üretilip <script nonce="..."> şeklinde uygulanabilir,
+     ancak bu single-page HTML mimarisiyle çalışmak için sunucu tarafı gerektirir. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  img-src 'self' data: https:;
+  media-src https:;
+  connect-src https://itunes.apple.com https://ax.itunes.apple.com;
+">
 <title>Podcast Player</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#5b8af5">
@@ -1046,6 +1060,7 @@ const LANGS = {
     size_small: 'Küçük', size_normal: 'Normal', size_large: 'Büyük', size_xlarge: 'Çok Büyük',
     row_compact: 'Sıkı', row_spacious: 'Geniş',
     sort_asc: 'Eskiden → Yeniye', sort_desc: 'Yeniden → Eskiye', dir: 'ltr',
+    audio_err: 'Ses dosyası yüklenemedi.',
   },
   en: {
     brand_sub: 'Free · No Account · iTunes API',
@@ -1074,6 +1089,7 @@ const LANGS = {
     size_small: 'Small', size_normal: 'Normal', size_large: 'Large', size_xlarge: 'X-Large',
     row_compact: 'Compact', row_spacious: 'Spacious',
     sort_asc: 'Oldest → Newest', sort_desc: 'Newest → Oldest', dir: 'ltr',
+    audio_err: 'Audio file could not be loaded.',
   },
   de: {
     brand_sub: 'Kostenlos · Kein Konto · iTunes API',
@@ -1102,6 +1118,7 @@ const LANGS = {
     size_small: 'Klein', size_normal: 'Normal', size_large: 'Groß', size_xlarge: 'Sehr groß',
     row_compact: 'Kompakt', row_spacious: 'Großzügig',
     sort_asc: 'Älteste → Neueste', sort_desc: 'Neueste → Älteste', dir: 'ltr',
+    audio_err: 'Audiodatei konnte nicht geladen werden.',
   },
   fr: {
     brand_sub: 'Gratuit · Sans compte · iTunes API',
@@ -1130,6 +1147,7 @@ const LANGS = {
     size_small: 'Petit', size_normal: 'Normal', size_large: 'Grand', size_xlarge: 'Très grand',
     row_compact: 'Compact', row_spacious: 'Spacieux',
     sort_asc: 'Du plus ancien', sort_desc: 'Du plus récent', dir: 'ltr',
+    audio_err: 'Impossible de charger le fichier audio.',
   },
   es: {
     brand_sub: 'Gratis · Sin cuenta · iTunes API',
@@ -1158,6 +1176,7 @@ const LANGS = {
     size_small: 'Pequeño', size_normal: 'Normal', size_large: 'Grande', size_xlarge: 'Muy grande',
     row_compact: 'Compacto', row_spacious: 'Espacioso',
     sort_asc: 'Más antiguo → Más reciente', sort_desc: 'Más reciente → Más antiguo', dir: 'ltr',
+    audio_err: 'No se pudo cargar el archivo de audio.',
   },
   ar: {
     brand_sub: 'مجاني · بدون حساب · iTunes API',
@@ -1186,6 +1205,7 @@ const LANGS = {
     size_small: 'صغير', size_normal: 'عادي', size_large: 'كبير', size_xlarge: 'كبير جداً',
     row_compact: 'مضغوط', row_spacious: 'واسع',
     sort_asc: 'الأقدم → الأحدث', sort_desc: 'الأحدث → الأقدم', dir: 'rtl',
+    audio_err: 'تعذّر تحميل ملف الصوت.',
   },
   ja: {
     brand_sub: '無料 · アカウント不要 · iTunes API',
@@ -1214,6 +1234,7 @@ const LANGS = {
     size_small: '小', size_normal: '中', size_large: '大', size_xlarge: '特大',
     row_compact: 'コンパクト', row_spacious: '広め',
     sort_asc: '古い順', sort_desc: '新しい順', dir: 'ltr',
+    audio_err: 'オーディオファイルを読み込めませんでした。',
   },
   ru: {
     brand_sub: 'Бесплатно · Без аккаунта · iTunes API',
@@ -1242,6 +1263,7 @@ const LANGS = {
     size_small: 'Маленький', size_normal: 'Обычный', size_large: 'Большой', size_xlarge: 'Очень большой',
     row_compact: 'Компактный', row_spacious: 'Просторный',
     sort_asc: 'Сначала старые', sort_desc: 'Сначала новые', dir: 'ltr',
+    audio_err: 'Не удалось загрузить аудиофайл.',
   },
 };
 // Active translations
@@ -1255,6 +1277,8 @@ function t(key, ...args) {
 
 function applyLang(lang) {
   T = LANGS[lang] || LANGS['tr'];
+  // Invalidate date cache since locale-formatted dates may differ
+  _dateCache.clear();
   // RTL support
   document.documentElement.setAttribute('dir', T.dir || 'ltr');
   // Update all data-i18n elements
@@ -1312,10 +1336,10 @@ const store = {
 // ═══════════════════════════════════════
 // XSS-SAFE TEXT ESCAPING
 // ═══════════════════════════════════════
-const _escMap = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#x27;' };
+const _escMap = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#x27;', '`':'&#x60;' };
 function esc(s) {
   if (s == null) return '';
-  return String(s).replace(/[&<>"']/g, c => _escMap[c]);
+  return String(s).replace(/[&<>"'`]/g, c => _escMap[c]);
 }
 
 // ═══════════════════════════════════════
@@ -1488,8 +1512,9 @@ function clearAll() {
 // ═══════════════════════════════════════
 // SEARCH
 // ═══════════════════════════════════════
-// Abort controller for in-flight searches
+// Abort controllers for in-flight requests
 let _searchAbort = null;
+let _loadAbort   = null;
 
 async function doSearch() {
   const raw = $('searchInput').value.trim();
@@ -1501,18 +1526,21 @@ async function doSearch() {
   if (_searchAbort) { _searchAbort.abort(); }
   _searchAbort = new AbortController();
   const signal = _searchAbort.signal;
+  // 10-second timeout
+  const searchTimeout = setTimeout(() => _searchAbort.abort(), 10000);
 
   btn.disabled = true; btn.textContent = '...';
   list.innerHTML = `<div class="empty-state">${esc(t('searching'))}</div>`;
 
   const id = extractId(raw);
-  if (id) { btn.disabled=false; btn.textContent='Ara →'; loadPodcast(id); return; }
+  if (id) { clearTimeout(searchTimeout); btn.disabled=false; btn.textContent='Ara →'; loadPodcast(id); return; }
 
   try {
     const res  = await fetch(
       `https://itunes.apple.com/search?term=${encodeURIComponent(raw)}&media=podcast&limit=8&country=tr`,
-      { signal }
+      { signal, credentials: 'omit', mode: 'cors' }
     );
+    clearTimeout(searchTimeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
@@ -1532,7 +1560,7 @@ async function doSearch() {
         <div class="result-info">
           <div class="result-name">${esc(p.collectionName||'—')}</div>
           <div class="result-author">${esc(p.artistName||'')}</div>
-          <div class="result-count">${esc(String(p.trackCount||'?'))} bölüm</div>
+          <div class="result-count">${esc(String(p.trackCount||'?'))} ${esc(t('ep_count_unit'))}</div>
         </div>
         <div class="result-arrow">›</div>`;
       // Attach event listener — no inline onclick with dynamic data
@@ -1544,7 +1572,8 @@ async function doSearch() {
     list.appendChild(frag);
 
   } catch(e) {
-    if (e.name === 'AbortError') return; // user started new search
+    clearTimeout(searchTimeout);
+    if (e.name === 'AbortError') return; // user started new search or timeout
     btn.disabled=false; btn.textContent='Ara →';
     list.innerHTML=`<div class="empty-state" style="color:var(--red)">Hata: ${esc(e.message)}</div>`;
   }
@@ -1561,6 +1590,12 @@ function extractId(s) {
 // LOAD PODCAST
 // ═══════════════════════════════════════
 async function loadPodcast(id) {
+  // Cancel any previous in-flight podcast load
+  if (_loadAbort) { _loadAbort.abort(); }
+  _loadAbort = new AbortController();
+  const loadSignal = _loadAbort.signal;
+  const loadTimeout = setTimeout(() => _loadAbort.abort(), 10000);
+
   currentPodcastId = String(id);
   $('searchScreen').style.display  = 'none';
   $('playerScreen').style.display  = 'flex';
@@ -1572,8 +1607,10 @@ async function loadPodcast(id) {
 
   try {
     const res = await fetch(
-      `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}&entity=podcastEpisode&limit=300&country=tr`
+      `https://itunes.apple.com/lookup?id=${encodeURIComponent(id)}&entity=podcastEpisode&limit=300&country=tr`,
+      { signal: loadSignal, credentials: 'omit', mode: 'cors' }
     );
+    clearTimeout(loadTimeout);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
@@ -1616,6 +1653,8 @@ async function loadPodcast(id) {
       if (idx >= 0) loadEp(idx, false);
     }
   } catch(e) {
+    clearTimeout(loadTimeout);
+    if (e.name === 'AbortError') return;
     setStatus('error', t('status_err') + e.message);
     elEpList.innerHTML = `<div class="empty-state" style="color:var(--red)">${esc(e.message)}<br><br>${t('retry')}</div>`;
   }
@@ -1627,7 +1666,7 @@ function goBack() {
   $('playerScreen').style.display = 'none';
   $('searchScreen').style.display = 'flex';
   episodes = []; filteredEps = []; currentIndex = -1;
-  elNowTitle.textContent = 'Bir bölüm seçin';
+  elNowTitle.textContent = t('pick_episode');
   elProgressFill.style.width = '0%';
   elTCur.textContent = '0:00';
   elTTot.textContent = '0:00';
@@ -1646,7 +1685,7 @@ function toggleSort() {
     const activeId = filteredEps[currentIndex]?.trackId;
     currentIndex = filteredEps.findIndex(e => e.trackId === activeId);
   }
-  elSortInfo.textContent = sortAsc ? 'Eskiden → Yeniye' : 'Yeniden → Eskiye';
+  elSortInfo.textContent = sortAsc ? t('sort_asc_label') : t('sort_desc_label');
   render();
 }
 
@@ -1797,6 +1836,10 @@ audio.addEventListener('ended', () => {
 });
 audio.addEventListener('play',  () => { elBtnPlay.textContent = '⏸'; });
 audio.addEventListener('pause', () => { elBtnPlay.textContent = '▶'; });
+audio.addEventListener('error', () => {
+  setStatus('error', t('audio_err') || 'Ses dosyası yüklenemedi.');
+  elBtnPlay.textContent = '▶';
+});
 
 // ═══════════════════════════════════════
 // DOWNLOAD
@@ -1835,7 +1878,8 @@ function fmtDate(s) {
   if (!s) return '';
   if (_dateCache.has(s)) return _dateCache.get(s);
   try {
-    const r = new Date(s).toLocaleDateString('tr-TR', {day:'2-digit',month:'2-digit',year:'numeric'});
+    const r = new Date(s).toLocaleDateString(S.lang || 'tr', {day:'2-digit',month:'2-digit',year:'numeric'});
+    if (_dateCache.size >= 500) _dateCache.delete(_dateCache.keys().next().value); // LRU eviction
     _dateCache.set(s, r);
     return r;
   } catch { return ''; }
