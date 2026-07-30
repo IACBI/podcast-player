@@ -7,7 +7,7 @@
 
 import type { FeedRequest, Subscription } from '../../feeds/types';
 import type { DownloadRecord } from '../../storage/db';
-import { httpsOnly } from '../../lib/safe';
+import { artTile, ROW_ART_PX } from '../art-tile';
 import { fmtBytes, fmtDate } from '../../lib/format';
 import { currentLang, t } from '../../i18n';
 import { removeSubscription, subscriptions } from '../../storage/subscriptions';
@@ -84,7 +84,6 @@ export function initLibraryView(deps: LibraryViewDeps): View {
 
   // ── subscriptions tab ────────────────────────────────────────────
   function subRow(f: Subscription) {
-    const art = httpsOnly(f.art);
     const star = h('button', {
       className: 'icon-btn faved',
       type: 'button',
@@ -121,9 +120,7 @@ export function initLibraryView(deps: LibraryViewDeps): View {
           },
         },
       },
-      art
-        ? h('img', { className: 'row-art', src: art, alt: '' })
-        : h('div', { className: 'row-art' }),
+      artTile('row-art', f.art, ROW_ART_PX),
       h(
         'div',
         { className: 'row-info' },

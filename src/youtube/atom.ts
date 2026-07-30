@@ -65,7 +65,10 @@ export async function fetchYtFeed(
     if (signal?.aborted) throw e;
   }
 
-  const xml = await fetchTextProxied(feedUrl, signal);
+  // No credential guard: this URL is built by us from a public channel or
+  // playlist id. A 24-char channel id looks exactly like an opaque token, so
+  // the guard would refuse every YouTube channel.
+  const xml = await fetchTextProxied(feedUrl, signal, undefined, false);
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
   const feed = doc.querySelector('feed');
   if (doc.querySelector('parsererror') || !feed) throw new Error('invalid yt feed');

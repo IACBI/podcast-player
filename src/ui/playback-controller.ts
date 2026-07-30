@@ -32,8 +32,8 @@ import {
 } from '../player/engine';
 import { downloadEpisode } from '../player/downloads';
 import { downloadOffline, offlineAudioUrl, removeDownload } from '../player/offline';
-import { getCachedFeed, putCachedFeed, listDownloads } from '../storage/db';
-import { setMediaMetadata } from '../player/media-session';
+import { getCachedFeed, putCachedFeed, putResume, listDownloads } from '../storage/db';
+import { setMediaMetadata, setMediaPosition } from '../player/media-session';
 import { getLastPlayed, getProgress, setLastPlayed, setProgress } from '../storage/progress';
 import { nowPlaying } from '../state/now-playing';
 import { clearQueue, dequeueNext, enqueue, queuePosition, removeFromQueue } from '../state/queue';
@@ -46,7 +46,9 @@ import {
   ytPlaylistIds,
 } from '../youtube/embed';
 import { ytServiceAudioUrl } from '../youtube/piped';
-import { svcJson } from '../feeds/proxy-chain';
+import { consumeSleepAtEpisodeEnd } from '../player/sleep-timer';
+import { PRIVATE_FEED_ERROR } from '../feeds/credential-url';
+import { API_BASE, svcJson } from '../feeds/proxy-chain';
 import { toast } from './toast';
 
 export interface PlaybackStatus {
@@ -261,14 +263,26 @@ export function createPlaybackController(): PlaybackController {
         const err = e as Error;
         if (err.name === 'AbortError') return;
         if (painted) return; // cached list stays usable offline
-        patch({ status: { kind: 'error', message: t('status_err') + (err.message || String(err)) } });
+        const message =
+          err.message === PRIVATE_FEED_ERROR
+            ? t('private_feed_err')
+            : t('status_err') + (err.message || String(err));
+        patch({ status: { kind: 'error', message } });
       }
     })();
   }
 
-  /** Background-fill real titles via noembed (embed fallback items). */
+  /**
+   * Background-fill real titles via noembed (embed fallback items). Capped:
+   * a playlist can be hundreds of items and each one costs a network round trip
+   * to a third party. Beyond the cap the numbered fallback title stands.
+   */
+  const EMBED_TITLE_CAP = 60;
+
   async function fillEmbedTitles(sig: AbortSignal): Promise<void> {
-    const targets = session().episodes.filter((e) => e.ytId && !e.trackName);
+    const targets = session()
+      .episodes.filter((e) => e.ytId && !e.trackName)
+      .slice(0, EMBED_TITLE_CAP);
     if (!targets.length) return;
     let i = 0;
     let since = 0;
@@ -321,19 +335,27 @@ export function createPlaybackController(): PlaybackController {
       void startAudioPreferOffline(ep.episodeUrl || '', id, autoplay);
     }
 
+    // Episode artwork wins over the feed cover on both surfaces — the OS used
+    // to get only the feed art while the sheet showed the episode's own.
+    const art = httpsOnly(ep.art) || httpsOnly(meta?.art);
     setMediaMetadata({
       title: ep.trackName || '',
       artist: meta?.artist || '',
       album: meta?.name || '',
-      artworkUrl: meta ? httpsOnly(meta.art) : '',
+      artworkUrl: art,
     });
     nowPlaying.set({
       title: ep.trackName || t('ep_fallback', idx + 1),
       feedName: meta?.name || '',
-      art: ep.art || (meta ? httpsOnly(meta.art) : ''),
+      art,
     });
 
-    if (meta) setLastPlayed(meta.id, id);
+    if (meta) {
+      setLastPlayed(meta.id, id);
+      // Small projection for Home, so it never has to deserialize a whole
+      // archive just to render one row.
+      void putResume({ id: meta.id, meta, episode: ep, updatedAt: Date.now() });
+    }
     bump();
   }
 
@@ -347,15 +369,38 @@ export function createPlaybackController(): PlaybackController {
     startAudio(local ?? src, id, autoplay);
   }
 
+  /**
+   * Guard for the app's only media sink. A YouTube audio URL comes from
+   * whichever third-party Piped instance answered first, so it is no more
+   * trusted than a feed enclosure — yet this was the one sink `httpsOnly` never
+   * covered. Our own offline copies are blob: URLs and stay allowed.
+   *
+   * The API base is the deliberate exception: in local dev the worker is plain
+   * http on loopback, which is also why the CSP lists it under media-src.
+   */
+  function safeMediaSrc(src: string): string {
+    if (src.startsWith('blob:')) return src;
+    const https = httpsOnly(src);
+    if (https) return https;
+    if (API_BASE && src.startsWith(API_BASE + '/')) return src;
+    return '';
+  }
+
   function startAudio(src: string, id: string, autoplay: boolean): void {
+    const isBlob = src.startsWith('blob:');
+    const safe = safeMediaSrc(src);
+    if (!safe) {
+      patch({ status: { kind: 'error', message: t('audio_err') } });
+      return;
+    }
     embedStop();
     setUsingEmbed(false);
-    if (currentBlobUrl && currentBlobUrl !== src) {
+    if (currentBlobUrl && currentBlobUrl !== safe) {
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;
     }
-    if (src.startsWith('blob:')) currentBlobUrl = src;
-    audio.src = src;
+    if (isBlob) currentBlobUrl = safe;
+    audio.src = safe;
     audio.load();
     const applyPrefs = (): void => {
       const S = settings();
@@ -595,17 +640,35 @@ export function createPlaybackController(): PlaybackController {
       bump();
       return;
     }
+    if (outcome === 'no-space') {
+      // A browser file download would hit the same limit — say so instead.
+      toast(t('dl_no_space'), 'error');
+      bump();
+      return;
+    }
     // CORS-blocked CDN etc. → legacy browser file download still works.
     const fb = await downloadEpisode(ep, s.isYT);
     toast(fb === 'ok' ? t('dl_fallback_file') : t('dl_not_found'), fb === 'ok' ? 'info' : 'error');
     bump();
   }
 
+  /**
+   * episodeTitle is called once per queue row, and the queue view re-renders on
+   * every mutation and language change — a linear scan made that
+   * O(queue × episodes). Index lazily, rebuilding only when the array changes.
+   */
+  let titleIndex = new Map<string, { title: string; i: number }>();
+  let titleIndexFor: unknown = null;
+
   function episodeTitle(id: string): string {
     const eps = session().episodes;
-    const i = eps.findIndex((e) => String(e.trackId) === id);
-    const ep = eps[i];
-    return ep ? ep.trackName || t('ep_fallback', i + 1) : '';
+    if (titleIndexFor !== eps) {
+      titleIndex = new Map();
+      eps.forEach((e, i) => titleIndex.set(String(e.trackId), { title: e.trackName, i }));
+      titleIndexFor = eps;
+    }
+    const hit = titleIndex.get(id);
+    return hit ? hit.title || t('ep_fallback', hit.i + 1) : '';
   }
 
   function retry(): void {
@@ -656,6 +719,8 @@ export function createPlaybackController(): PlaybackController {
         document.body.classList.remove('is-playing');
         break;
       case 'ended': {
+        // "Sleep at end of episode" must win over both the queue and auto-next.
+        if (consumeSleepAtEpisodeEnd()) break;
         const s = session();
         // Queue wins over plain list order.
         const nextQueued = dequeueNext(s.currentTrackId ?? undefined);
@@ -676,6 +741,7 @@ export function createPlaybackController(): PlaybackController {
         const s = session();
         const ep = s.currentIndex >= 0 ? s.filtered[s.currentIndex] : undefined;
         if (ep && e.current > 5) setProgress(String(ep.trackId), e.current);
+        setMediaPosition(e.current, e.duration, settings().defaultSpeed);
         break;
       }
       case 'error':

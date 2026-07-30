@@ -54,6 +54,46 @@
 .confirm-msg { color: var(--text2); font-size: var(--fs-md); line-height: 1.55; margin-block-end: var(--s-5); }
 .confirm-actions { display: flex; justify-content: flex-end; gap: var(--s-3); }
 
+/* Keyboard shortcut cheatsheet (?) — same dialog shell. */
+.sc-dialog { inline-size: min(440px, calc(100vw - 40px)); }
+.sc-list {
+  display: grid;
+  gap: var(--s-2);
+  margin-block-end: var(--s-5);
+}
+.sc-row {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) 1fr;
+  align-items: center;
+  gap: var(--s-3);
+}
+.sc-key {
+  justify-self: start;
+  padding: 2px var(--s-2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+.sc-desc { color: var(--text2); font-size: var(--fs-sm); }
+
+/* Numeric prompt reuses the confirm dialog's shell. */
+.num-prompt-label {
+  display: block;
+  margin-block-end: var(--s-2);
+  color: var(--text2);
+  font-size: var(--fs-sm);
+}
+.num-prompt-input {
+  inline-size: 100%;
+  margin-block-end: var(--s-5);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ─ Offline banner ─ */
 .offline-banner {
   position: fixed;

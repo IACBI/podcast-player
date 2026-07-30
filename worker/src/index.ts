@@ -39,12 +39,41 @@ app.use(
   }),
 );
 
+/**
+ * Audio streaming cannot use the normal per-request budget: seeking issues
+ * bursts of range requests and would trip it instantly. So only *stream starts*
+ * are counted — a request with no Range, or one starting at byte 0. Normal
+ * playback produces one or two per episode; using the worker as a general
+ * media proxy needs one per file, which is what this bounds.
+ */
+const AUDIO_STARTS_PER_MIN = 30;
+
+const RATE_LIMITED = { error: 'rate limited' } as const;
+
 app.use('*', async (c, next) => {
-  // Audio streaming is exempt: seeking issues bursts of range requests
-  if (c.req.path === '/v1/yt/audio') return next();
   const ip = c.req.header('cf-connecting-ip') ?? '';
+
+  if (c.req.path === '/v1/yt/audio') {
+    const range = c.req.header('range') ?? '';
+    const isStreamStart = !range || /^bytes=0-/.test(range);
+    if (isStreamStart && (await rateLimited(c.env.KV, ip, AUDIO_STARTS_PER_MIN, 'rla'))) {
+      return c.json(RATE_LIMITED, 429, { 'retry-after': '60' });
+    }
+    // <audio> issues a no-cors media request and sends no Origin, so the
+    // app-origin check below cannot apply here.
+    return next();
+  }
+
+  if (c.req.path !== '/' && !allowOrigin(c.req.header('origin') ?? '')) {
+    // Without this the proxy endpoints are usable as a general-purpose open
+    // proxy, which also lets anyone seed our edge cache. Browsers always send
+    // Origin on a cross-origin fetch and the app is never same-origin with the
+    // worker, so a missing or foreign Origin means the caller is not the app.
+    return c.json({ error: 'forbidden' }, 403);
+  }
+
   if (await rateLimited(c.env.KV, ip)) {
-    return c.json({ error: 'rate limited' }, 429, { 'retry-after': '60' });
+    return c.json(RATE_LIMITED, 429, { 'retry-after': '60' });
   }
   await next();
 });
@@ -200,6 +229,8 @@ app.get('/v1/yt/audio', async (c) => {
   const kv = c.env.KV;
   let fmt = await audioFor(kv, id);
   if (!fmt) return c.json({ error: 'no stream' }, 502);
+  // youtubei.js only checks the scheme, so confirm the host before streaming.
+  if (!safeTarget(fmt.url)) return c.json({ error: 'no stream' }, 502);
 
   const size = fmt.contentLength || 0;
   const m = /bytes=(\d+)-(\d*)/.exec(c.req.header('range') ?? '');
@@ -214,7 +245,10 @@ app.get('/v1/yt/audio', async (c) => {
     // googlevideo's own `range` query param passes where the Range header is
     // rejected for non-zero offsets (PO-token era first-chunk-only behavior)
     const u = fmt!.url + `&range=${from}-${to}`;
-    const res = await fetch(u, { headers: { 'user-agent': fmt!.ua } });
+    // fetchWithTimeout, not bare fetch: the URL comes from youtubei.js output,
+    // so it needs the same manual-redirect re-validation as any other upstream.
+    // The timeout covers reaching the response, not draining its body.
+    const res = await fetchWithTimeout(u, 20000, { headers: { 'user-agent': fmt!.ua } });
     if ((res.status === 403 || res.status === 410) && allowRetry) {
       await kv.delete('yta2:' + id).catch(() => {});
       fmt = await audioFor(kv, id);

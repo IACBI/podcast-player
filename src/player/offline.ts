@@ -34,7 +34,10 @@ export async function isDownloaded(episodeId: string): Promise<boolean> {
   return (await getDownload(episodeId)) !== undefined;
 }
 
-export type OfflineOutcome = 'ok' | 'no-url' | 'cors-blocked' | 'failed';
+export type OfflineOutcome = 'ok' | 'no-url' | 'cors-blocked' | 'failed' | 'no-space';
+
+/** Keep this much headroom free rather than filling the origin's quota. */
+const QUOTA_HEADROOM_BYTES = 50 * 1024 * 1024;
 
 /** Fetch the episode audio into the offline cache. */
 export async function downloadOffline(
@@ -47,28 +50,50 @@ export async function downloadOffline(
   try {
     const res = await fetch(src, { mode: 'cors', credentials: 'omit' });
     if (!res.ok) return 'failed';
-    const blob = await res.blob();
+
+    // Refuse up front when the episode obviously will not fit — the estimate is
+    // right here and was previously only used for the settings readout.
+    const declared = Number(res.headers.get('content-length') || 0);
+    if (declared > 0 && !(await hasRoomFor(declared))) return 'no-space';
+
+    // Hand the body straight to the Cache API instead of `await res.blob()`:
+    // that materialised the whole episode in the JS heap, so a 150 MB download
+    // was a 150 MB allocation on a phone.
     const cache = await caches.open(AUDIO_CACHE);
-    await cache.put(
-      cacheKey(String(ep.trackId)),
-      new Response(blob, {
-        headers: {
-          'content-type': res.headers.get('content-type') || 'audio/mpeg',
-          'content-length': String(blob.size),
-        },
-      }),
-    );
+    const headers: Record<string, string> = {
+      'content-type': res.headers.get('content-type') || 'audio/mpeg',
+    };
+    if (declared > 0) headers['content-length'] = String(declared);
+    await cache.put(cacheKey(String(ep.trackId)), new Response(res.body, { headers }));
+
+    // Trust the stored entry over the declared length for the size record.
+    const stored = await cache.match(cacheKey(String(ep.trackId)));
+    const bytes = Number(stored?.headers.get('content-length') || declared) || 0;
+
     await putDownload({
       id: String(ep.trackId),
       feedId,
       title: ep.trackName || '',
-      bytes: blob.size,
+      bytes,
       addedAt: Date.now(),
     });
     return 'ok';
   } catch (e) {
     // Typical failure: podcast CDN without CORS headers.
     return e instanceof TypeError ? 'cors-blocked' : 'failed';
+  }
+}
+
+/** Quota check; permissive when the browser gives us no estimate. */
+async function hasRoomFor(bytes: number): Promise<boolean> {
+  try {
+    const est = await navigator.storage?.estimate?.();
+    const quota = est?.quota ?? 0;
+    const usage = est?.usage ?? 0;
+    if (!quota) return true;
+    return usage + bytes + QUOTA_HEADROOM_BYTES <= quota;
+  } catch {
+    return true;
   }
 }
 

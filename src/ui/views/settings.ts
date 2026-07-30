@@ -128,6 +128,17 @@ const MARKUP = `
         <option value="oled" data-i18n="theme_oled">OLED Siyah</option>
       </select>
     </div>
+
+    <div class="s-row">
+      <div>
+        <div class="s-label" data-i18n="s_ambient">Kapaktan renk</div>
+        <div class="s-sublabel" data-i18n="s_ambient_hint">Şimdi çalıyor arka planını kapak görselinden renklendir</div>
+      </div>
+      <label class="s-toggle">
+        <input type="checkbox" id="s_ambientArt" checked>
+        <span class="s-toggle-track"></span>
+      </label>
+    </div>
   </section>
 
   <section class="s-section">
@@ -194,6 +205,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   const sFontSize = pick<HTMLSelectElement>('s_fontSize');
   const sRowHeight = pick<HTMLSelectElement>('s_rowHeight');
   const sTheme = pick<HTMLSelectElement>('s_theme');
+  const sAmbient = pick<HTMLInputElement>('s_ambientArt');
   const sSort = pick<HTMLSelectElement>('s_defaultSort');
   const sShowDl = pick<HTMLInputElement>('s_showDl');
   // Language: the shared flag listbox (native <option> can't render flags)
@@ -240,6 +252,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
     sSkipFwd.value = String(S.skipForward);
     sAutoNext.checked = S.autoNext;
     sResume.checked = S.resumePos;
+    sAmbient.checked = S.ambientArt;
     sFontSize.value = S.fontSize;
     sRowHeight.value = S.rowHeight;
     sTheme.value = S.theme;
@@ -270,6 +283,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   sSkipFwd.addEventListener('change', () => setSetting('skipForward', parseInt(sSkipFwd.value) || 30));
   sAutoNext.addEventListener('change', () => setSetting('autoNext', sAutoNext.checked));
   sResume.addEventListener('change', () => setSetting('resumePos', sResume.checked));
+  sAmbient.addEventListener('change', () => setSetting('ambientArt', sAmbient.checked));
   sFontSize.addEventListener('change', () => {
     setSetting('fontSize', sFontSize.value);
     applySide(settings());

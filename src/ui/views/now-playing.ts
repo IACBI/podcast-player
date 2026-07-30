@@ -8,16 +8,19 @@
  */
 
 import { currentLang, t } from '../../i18n';
+import { artAt, artSrcset } from '../../lib/art';
 import { fmtTime } from '../../lib/format';
 import { httpsOnly } from '../../lib/safe';
-import { isUsingEmbed, onEngine, pbSetRate } from '../../player/engine';
-import { setSleepTimer } from '../../player/sleep-timer';
+import { isUsingEmbed, onEngine, pbCurrent, pbDuration, pbSetRate } from '../../player/engine';
+import { hasShowNotes, parseShowNotes } from '../../feeds/show-notes';
+import { updateAmbient } from '../ambient';
+import { h } from '../h';
+import { initSleepControl } from '../sleep-control';
 import { nowPlaying, type NowPlaying } from '../../state/now-playing';
 import { queue } from '../../state/queue';
 import { setSetting, settings, type Settings } from '../../state/settings';
 import type { PlaybackController, PlaybackSession } from '../playback-controller';
 import { must } from '../shell';
-import { toast } from '../toast';
 import { initWaveform, type WaveformController } from '../waveform';
 
 export interface NowPlayingDeps {
@@ -34,7 +37,6 @@ export interface NowPlayingSheet {
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
-const SLEEPS = [0, 15, 30, 60];
 
 export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   const { playback } = deps;
@@ -49,7 +51,10 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
 
       <div class="np-player" id="npPlayer">
         <div class="np-stage">
-          <img class="np-art" id="npArt" alt="" decoding="async">
+          <picture class="np-pic">
+            <source id="npArtWebp" type="image/webp">
+            <img class="np-art" id="npArt" alt="" width="640" height="640" fetchpriority="high" decoding="async">
+          </picture>
           <div class="yt-frame" id="ytFrame"><div id="ytHost"></div></div>
         </div>
 
@@ -80,9 +85,11 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
         </div>
 
         <div class="np-secondary">
-          <label class="np-sec-ctl">
+          <label class="np-sec-ctl np-sleep">
             <svg class="icon" aria-hidden="true"><use href="#ic-moon"/></svg>
             <select class="seri-select np-sel" id="sleepSel" data-i18n-aria="sleep_timer" aria-label="Uyku zamanlayıcısı (dk)"></select>
+            <span class="np-sleep-left mono" id="sleepLeft" data-i18n-aria="sleep_remaining" aria-label="Kalan uyku süresi" aria-live="off" hidden></span>
+            <button class="np-sleep-plus" id="sleepPlus" type="button" title="+5" hidden>+5</button>
           </label>
           <label class="np-sec-ctl">
             <span class="np-sec-glyph" aria-hidden="true">×</span>
@@ -90,6 +97,11 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
           </label>
           <button class="icon-btn np-queue" id="queueToggle" data-i18n-aria="queue_title" aria-label="Çalma kuyruğu"><svg class="icon" aria-hidden="true"><use href="#ic-queue"/></svg><span class="np-queue-badge" id="queueCount" aria-hidden="true">0</span></button>
         </div>
+
+        <details class="np-notes" id="npNotes" hidden>
+          <summary class="np-notes-toggle" data-i18n="np_notes">Bölüm notları</summary>
+          <div class="np-notes-body" id="npNotesBody"></div>
+        </details>
         </div>
       </div>
     </div>`;
@@ -97,6 +109,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   // ── element cache ────────────────────────────────────────────────
   const player = must('npPlayer');
   const art = must<HTMLImageElement>('npArt');
+  const artWebp = must<HTMLSourceElement>('npArtWebp');
   const feedEl = must('npFeed');
   const titleEl = must('nowTitle');
   const elTCur = must('tCur');
@@ -109,9 +122,10 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   const lblSkipBack = must('lblSkipBack');
   const lblSkipFwd = must('lblSkipFwd');
   const speedSel = must<HTMLSelectElement>('speedSel');
-  const sleepSel = must<HTMLSelectElement>('sleepSel');
   const queueBtn = must<HTMLButtonElement>('queueToggle');
   const queueCount = must('queueCount');
+  const notesEl = must<HTMLDetailsElement>('npNotes');
+  const notesBody = must('npNotesBody');
 
   // ── waveform / frequency line ────────────────────────────────────
   const wave: WaveformController = initWaveform(
@@ -137,18 +151,11 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     o.textContent = v + '×';
     speedSel.appendChild(o);
   }
-  function buildSleepOptions(): void {
-    const cur = sleepSel.value || '0';
-    sleepSel.replaceChildren();
-    for (const n of SLEEPS) {
-      const o = document.createElement('option');
-      o.value = String(n);
-      o.textContent = n === 0 ? '—' : n + ' ' + t('dur_m');
-      sleepSel.appendChild(o);
-    }
-    sleepSel.value = cur;
-  }
-  buildSleepOptions();
+  initSleepControl({
+    select: must<HTMLSelectElement>('sleepSel'),
+    countdown: must('sleepLeft'),
+    extend: must<HTMLButtonElement>('sleepPlus'),
+  });
 
   // ── play icon / title crossfade ──────────────────────────────────
   let playing = false;
@@ -198,25 +205,123 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     btnPrev.disabled = s.currentIndex <= 0;
     btnNext.disabled = s.currentIndex < 0 || s.currentIndex >= s.filtered.length - 1;
     updateYtMode();
+    applyNotes(ep?.description);
+  }
+
+  /**
+   * Show notes are untrusted feed HTML, so they are reduced to text plus
+   * https-only links and rebuilt as real nodes — no markup string ever reaches
+   * the DOM. See feeds/show-notes.ts.
+   */
+  let notesFor: string | undefined;
+  function applyNotes(description: string | undefined): void {
+    if (description === notesFor) return;
+    notesFor = description;
+    const notes = parseShowNotes(description);
+    if (!hasShowNotes(notes)) {
+      notesEl.hidden = true;
+      notesBody.replaceChildren();
+      return;
+    }
+    const nodes: HTMLElement[] = notes.paragraphs.map((p) =>
+      h('p', { className: 'np-note-p' }, p),
+    );
+    if (notes.links.length) {
+      nodes.push(
+        h(
+          'ul',
+          { className: 'np-note-links' },
+          ...notes.links.map((l) =>
+            h(
+              'li',
+              {},
+              h(
+                'a',
+                {
+                  href: l.href,
+                  className: 'np-note-link',
+                  attrs: { target: '_blank', rel: 'noopener noreferrer' },
+                },
+                l.text,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    notesBody.replaceChildren(...nodes);
+    notesEl.hidden = false;
+    notesEl.open = false;
   }
   playback.session.subscribe(applySession);
   applySession(playback.session());
 
   // ── now-playing → artwork + feed name ────────────────────────────
+  // The hero renders up to 320 CSS px (300 on desktop), so a retina screen
+  // wants ~1024. Feed metadata often only advertises a 100px thumbnail — see
+  // lib/art.ts for how a real rendition is derived from it.
+  const HERO_WIDTHS = [320, 640, 1024];
+  /**
+   * Mirrors `.np-stage` in views/now-playing.css. Set from here rather than in
+   * the markup because <source> needs its own copy — `sizes` on the <img> does
+   * not apply to a <source>, and without it the default is 100vw, which makes
+   * the browser always pick the largest candidate.
+   */
+  const HERO_SIZES = '(min-width: 900px) 300px, 72vw';
+  art.sizes = HERO_SIZES;
+  artWebp.sizes = HERO_SIZES;
+
+  function clearArt(): void {
+    artWebp.removeAttribute('srcset');
+    art.removeAttribute('srcset');
+    art.removeAttribute('src');
+    art.style.display = 'none';
+  }
+
+  /** True once the WebP rendition has been given up on for this URL. */
+  let webpFailedFor = '';
+
   function applyNow(now: NowPlaying | null): void {
     const src = now ? httpsOnly(now.art) : '';
     feedEl.textContent = now?.feedName ?? '';
     if (src) {
-      art.src = src;
+      // WebP is ~4× lighter at this size. <picture> picks it by MIME support
+      // alone and does *not* fall back if the chosen resource 404s, hence the
+      // error handler below.
+      const webp = src === webpFailedFor ? '' : artSrcset(src, HERO_WIDTHS, { webp: true });
+      const same = artSrcset(src, HERO_WIDTHS);
+      setSrcset(artWebp, webp);
+      setSrcset(art, same);
+      art.src = artAt(src, 640);
       art.style.display = '';
     } else {
-      art.removeAttribute('src');
-      art.style.display = 'none';
+      clearArt();
     }
+    updateAmbient(settings().ambientArt ? src : '');
     // Artless feeds: collapse the stage so the title doesn't float in a void
     // (yt-mode CSS re-shows the stage for the embedded video).
     player.classList.toggle('no-art', !src);
   }
+
+  function setSrcset(el: HTMLImageElement | HTMLSourceElement, value: string): void {
+    if (value) el.srcset = value;
+    else el.removeAttribute('srcset');
+  }
+
+  // Dead artwork: retry once without WebP, then collapse the stage rather than
+  // leave a broken image box.
+  art.addEventListener('error', () => {
+    if (!art.getAttribute('src')) return; // our own clearArt(), not a failure
+    const src = httpsOnly(nowPlaying()?.art);
+    if (src && artWebp.getAttribute('srcset')) {
+      webpFailedFor = src;
+      applyNow(nowPlaying());
+      return;
+    }
+    clearArt();
+    player.classList.add('no-art');
+  });
+
   nowPlaying.subscribe(applyNow);
   applyNow(nowPlaying());
 
@@ -240,6 +345,9 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
         player.classList.remove('playing');
         break;
       case 'timeupdate':
+        // The sheet stays rendered while dismissed (the YT embed lives in it),
+        // so guard explicitly rather than relying on it being hidden.
+        if (document.hidden || !isOpen()) break;
         if (!wave.isScrubbing()) wave.setProgress(e.duration ? (e.current / e.duration) * 100 : 0);
         elTCur.textContent = fmtTime(e.current);
         elTTot.textContent = fmtTime(e.duration);
@@ -260,32 +368,14 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     setSetting('defaultSpeed', speed);
     pbSetRate(speed);
   });
-  sleepSel.addEventListener('change', () => {
-    const min = parseInt(sleepSel.value) || 0;
-    sleepSel.classList.toggle('active', min > 0);
-    // Mirror into the mini bar's select so both surfaces show the same timer.
-    const miniSel = document.getElementById('miniSleep') as HTMLSelectElement | null;
-    if (miniSel) {
-      miniSel.value = sleepSel.value;
-      miniSel.classList.toggle('active', min > 0);
-    }
-    if (min > 0) toast(t('sleep_set', min));
-    setSleepTimer(min, () => {
-      sleepSel.value = '0';
-      sleepSel.classList.remove('active');
-      if (miniSel) {
-        miniSel.value = '0';
-        miniSel.classList.remove('active');
-      }
-      toast(t('sleep_done'));
-    });
-  });
 
   // ── settings → skip labels + speed value ─────────────────────────
   function applySettings(s: Settings): void {
     lblSkipBack.textContent = String(s.skipBack);
     lblSkipFwd.textContent = String(s.skipForward);
     speedSel.value = String(s.defaultSpeed);
+    // Toggling the preference takes effect without waiting for a track change.
+    updateAmbient(s.ambientArt ? httpsOnly(nowPlaying()?.art) : '');
   }
   settings.subscribe(applySettings);
   applySettings(settings());
@@ -293,7 +383,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   // ── language → dynamic labels ────────────────────────────────────
   currentLang.subscribe(() => {
     setPlayIcon(playing);
-    buildSleepOptions();
+    // The sleep control relabels itself (sleep-control.ts).
     const s = playback.session();
     if (s.currentIndex < 0) titleEl.textContent = t('pick_episode');
   });
@@ -304,18 +394,45 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   // be creatable — while the sheet is dismissed.
   let lastFocus: HTMLElement | null = null;
 
+  /**
+   * Real modal semantics without `display: none` (which would kill the YT
+   * embed). Marking everything *behind* the sheet inert takes it out of the tab
+   * order and the accessibility tree, so the platform provides the focus trap;
+   * while dismissed the sheet itself is inert for the same reason.
+   */
+  function setBackgroundInert(on: boolean): void {
+    for (const sel of ['.app-frame', '#miniPlayer']) {
+      const node = document.querySelector<HTMLElement>(sel);
+      if (node) node.inert = on;
+    }
+    el.inert = !on;
+    el.setAttribute('aria-modal', on ? 'true' : 'false');
+  }
+
   function open(): void {
     if (isOpen()) return;
     lastFocus = document.activeElement as HTMLElement | null;
     el.classList.add('open');
+    setBackgroundInert(true);
+    // The timeupdate handler skips work while dismissed, so sync from the
+    // engine on the way in — otherwise a seek made while paused shows stale.
+    const cur = pbCurrent();
+    const dur = pbDuration();
+    elTCur.textContent = fmtTime(cur);
+    elTTot.textContent = fmtTime(dur);
+    if (!wave.isScrubbing()) wave.setProgress(dur ? (cur / dur) * 100 : 0);
     must('npClose').focus();
   }
   function close(): void {
     if (!isOpen()) return;
     el.classList.remove('open');
+    setBackgroundInert(false);
     lastFocus?.focus({ preventScroll: true });
     lastFocus = null;
   }
+
+  // Dismissed at boot: keep it out of the tab order until it is opened.
+  setBackgroundInert(false);
   function isOpen(): boolean {
     return el.classList.contains('open');
   }

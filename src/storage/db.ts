@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import type { ResolvedFeed } from '../feeds/types';
+import type { Episode, FeedMeta, ResolvedFeed } from '../feeds/types';
 
 /**
  * IndexedDB layer. Scope note: settings/progress/subscriptions intentionally
@@ -24,19 +24,43 @@ export interface DownloadRecord {
   addedAt: number;
 }
 
+/**
+ * Just enough about one episode for the Home "continue listening" rail.
+ *
+ * Home used to reach this through `getCachedFeed`, which structured-clones a
+ * feed's *entire* archive out of IndexedDB — for every subscription, on every
+ * visit home — to read a single title and duration. This projection is one
+ * small record per feed instead.
+ */
+export interface ResumeEntry {
+  /** FeedMeta id, same key space as the `feeds` store. */
+  id: string;
+  meta: FeedMeta;
+  episode: Episode;
+  updatedAt: number;
+}
+
 interface SeseriDB extends DBSchema {
   feeds: { key: string; value: CachedFeed };
   downloads: { key: string; value: DownloadRecord };
+  resume: { key: string; value: ResumeEntry };
 }
+
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<SeseriDB>> | null = null;
 
 export function db(): Promise<IDBPDatabase<SeseriDB>> {
   if (!dbPromise) {
-    dbPromise = openDB<SeseriDB>('seseri', 1, {
-      upgrade(d) {
-        d.createObjectStore('feeds', { keyPath: 'id' });
-        d.createObjectStore('downloads', { keyPath: 'id' });
+    dbPromise = openDB<SeseriDB>('seseri', DB_VERSION, {
+      upgrade(d, oldVersion) {
+        if (oldVersion < 1) {
+          d.createObjectStore('feeds', { keyPath: 'id' });
+          d.createObjectStore('downloads', { keyPath: 'id' });
+        }
+        if (oldVersion < 2) {
+          d.createObjectStore('resume', { keyPath: 'id' });
+        }
       },
     });
   }
@@ -62,9 +86,28 @@ export async function putCachedFeed(feed: ResolvedFeed): Promise<void> {
 
 export async function clearFeedCache(): Promise<void> {
   try {
-    await (await db()).clear('feeds');
+    const d = await db();
+    await d.clear('feeds');
+    await d.clear('resume');
   } catch {
     /* ignore */
+  }
+}
+
+// ── resume projection (Home's continue-listening rail) ─────────────
+export async function getResume(feedId: string): Promise<ResumeEntry | undefined> {
+  try {
+    return await (await db()).get('resume', feedId);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function putResume(entry: ResumeEntry): Promise<void> {
+  try {
+    await (await db()).put('resume', entry);
+  } catch {
+    /* best-effort: Home falls back to the full feed cache */
   }
 }
 

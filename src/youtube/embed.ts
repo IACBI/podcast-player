@@ -19,6 +19,9 @@ export interface YtPlayer {
   getPlaylist(): string[] | null;
   setPlaybackQuality(q: string): void;
   getVideoData?(): { title?: string } | undefined;
+  /** 0–100. Optional: only needed for the sleep timer's fade-out. */
+  getVolume?(): number;
+  setVolume?(v: number): void;
 }
 
 interface YtNamespace {

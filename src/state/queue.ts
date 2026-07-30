@@ -20,6 +20,16 @@ export function queuePosition(id: string): number {
   return queue().indexOf(id) + 1;
 }
 
+/**
+ * 1-based positions as a lookup. Use this instead of calling `queuePosition`
+ * per item when rendering a list, which is O(items × queue).
+ */
+export function queuePositions(): Map<string, number> {
+  const m = new Map<string, number>();
+  queue().forEach((id, i) => m.set(id, i + 1));
+  return m;
+}
+
 /** Pop the next queued id (skipping the episode that just ended). */
 export function dequeueNext(justEndedId?: string): string | undefined {
   let next: string | undefined;

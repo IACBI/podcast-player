@@ -1,13 +1,13 @@
-import { currentLang, t } from '../i18n';
+import { t } from '../i18n';
+import { artAt, artSrcset } from '../lib/art';
+import { dprWidths, MINI_ART_PX } from './art-tile';
 import { fmtTime } from '../lib/format';
-import { httpsOnly } from '../lib/safe';
 import { onEngine, pbDuration, pbSeekTo, pbSetRate } from '../player/engine';
-import { setSleepTimer } from '../player/sleep-timer';
+import { initSleepControl } from './sleep-control';
 import { nowPlaying } from '../state/now-playing';
 import { setSetting, settings } from '../state/settings';
 import type { PlaybackController } from './playback-controller';
 import { must } from './shell';
-import { toast } from './toast';
 
 /**
  * Persistent mini transport — a real transport bar, not just a "reopen"
@@ -21,7 +21,6 @@ import { toast } from './toast';
  * body.is-playing; a clean static line when paused or under reduced motion). */
 const MINI_BARS = 24;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5];
-const SLEEPS = [0, 15, 30, 60];
 
 export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () => void }): void {
   const { playback } = deps;
@@ -53,19 +52,8 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
     o.textContent = v + '×';
     speedSel.appendChild(o);
   }
-  function buildSleepOptions(): void {
-    const cur = sleepSel.value || '0';
-    sleepSel.replaceChildren();
-    for (const n of SLEEPS) {
-      const o = document.createElement('option');
-      o.value = String(n);
-      o.textContent = n === 0 ? '—' : n + ' ' + t('dur_m');
-      sleepSel.appendChild(o);
-    }
-    sleepSel.value = cur;
-  }
-  buildSleepOptions();
-  currentLang.subscribe(buildSleepOptions);
+  // The dock has no room for a countdown; the sheet shows that.
+  initSleepControl({ select: sleepSel });
 
   function setIcon(playing: boolean): void {
     const u = btnPlay.querySelector('use');
@@ -78,8 +66,22 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
     if (!now) return;
     title.textContent = now.title;
     feed.textContent = now.feedName;
-    const src = httpsOnly(now.art);
-    if (src) art.src = src;
+    const src = artAt(now.art, MINI_ART_PX);
+    if (src) {
+      art.src = src;
+      const set = artSrcset(now.art, dprWidths(MINI_ART_PX));
+      if (set) {
+        art.srcset = set;
+        art.sizes = `${MINI_ART_PX}px`;
+      } else {
+        art.removeAttribute('srcset');
+      }
+    } else {
+      // Must be cleared, or the previous podcast's cover stays on a track
+      // that has none.
+      art.removeAttribute('srcset');
+      art.removeAttribute('src');
+    }
     art.style.display = src ? '' : 'none';
   });
 
@@ -103,6 +105,8 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
         setIcon(false);
         break;
       case 'timeupdate': {
+        // 4 Hz, and nothing here is observable while the tab is hidden.
+        if (document.hidden) break;
         const pct = e.duration ? (e.current / e.duration) * 100 : 0;
         progress.style.width = pct + '%';
         scrub.setAttribute('aria-valuenow', String(Math.round(pct)));
@@ -124,27 +128,6 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
     const v = parseFloat(speedSel.value) || 1;
     setSetting('defaultSpeed', v);
     pbSetRate(v);
-  });
-  sleepSel.addEventListener('change', () => {
-    const min = parseInt(sleepSel.value) || 0;
-    sleepSel.classList.toggle('active', min > 0);
-    // Mirror into the sheet's select so both surfaces show the same timer
-    // (sleep-timer.ts holds one global timer — last caller wins either way).
-    const sheetSel = document.getElementById('sleepSel') as HTMLSelectElement | null;
-    if (sheetSel) {
-      sheetSel.value = sleepSel.value;
-      sheetSel.classList.toggle('active', min > 0);
-    }
-    if (min > 0) toast(t('sleep_set', min));
-    setSleepTimer(min, () => {
-      sleepSel.value = '0';
-      sleepSel.classList.remove('active');
-      if (sheetSel) {
-        sheetSel.value = '0';
-        sheetSel.classList.remove('active');
-      }
-      toast(t('sleep_done'));
-    });
   });
 
   settings.subscribe((S) => {

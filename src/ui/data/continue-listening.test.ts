@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CachedFeed } from '../../storage/db';
+import type { CachedFeed, ResumeEntry } from '../../storage/db';
 import type { Episode, FeedMeta, FeedRequest } from '../../feeds/types';
 
 /**
@@ -20,6 +20,8 @@ const state = vi.hoisted(() => ({
   progress: new Map<string, number>(),
   /** feedId → CachedFeed */
   cached: new Map<string, CachedFeed>(),
+  /** feedId → ResumeEntry (the small projection Home prefers) */
+  resume: new Map<string, ResumeEntry>(),
   /** every attempted write, by name — must stay empty */
   writes: [] as string[],
 }));
@@ -56,14 +58,18 @@ vi.mock('../../storage/local', () => ({
 
 vi.mock('../../storage/db', () => ({
   getCachedFeed: vi.fn(async (id: string) => state.cached.get(id)),
+  getResume: vi.fn(async (id: string) => state.resume.get(id)),
   putCachedFeed: vi.fn(async () => {
     state.writes.push('db.putCachedFeed');
+  }),
+  putResume: vi.fn(async () => {
+    state.writes.push('db.putResume');
   }),
 }));
 
 import { continueListening } from './continue-listening';
 import { local } from '../../storage/local';
-import { putCachedFeed } from '../../storage/db';
+import { getCachedFeed, putCachedFeed, putResume } from '../../storage/db';
 
 // ── builders ─────────────────────────────────────────────────────────
 function ep(trackId: string, ms = 100_000): Episode {
@@ -89,6 +95,7 @@ beforeEach(() => {
   state.lastPlayed.clear();
   state.progress.clear();
   state.cached.clear();
+  state.resume.clear();
   state.writes = [];
   vi.clearAllMocks();
 });
@@ -159,6 +166,59 @@ describe('continueListening — limit', () => {
   });
 });
 
+describe('continueListening — resume projection', () => {
+  /** Register the small projection instead of a full cached feed. */
+  function seedResume(id: string, episodeId: string, progressSec: number): void {
+    state.resume.set(id, {
+      id,
+      meta: meta(id),
+      episode: ep(episodeId),
+      updatedAt: 0,
+    });
+    state.lastPlayed.set(id, episodeId);
+    state.progress.set(episodeId, progressSec);
+  }
+
+  it('reads the projection and never deserializes the full archive', async () => {
+    seedResume('100', 'e100', 30);
+    state.subs = [meta('100')];
+
+    const out = await continueListening();
+
+    expect(out).toHaveLength(1);
+    expect(out[0]!.episode.trackId).toBe('e100');
+    // The whole point: a feed's entire episode list is not loaded.
+    expect(vi.mocked(getCachedFeed)).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the feed cache when no projection exists yet', async () => {
+    // Pre-existing user: feed cached before the projection store was added.
+    seedFeed('100', { lastPlayed: 'e100', progressSec: 30 });
+    state.subs = [meta('100')];
+
+    const out = await continueListening();
+
+    expect(out).toHaveLength(1);
+    expect(out[0]!.episode.trackId).toBe('e100');
+    expect(vi.mocked(getCachedFeed)).toHaveBeenCalledWith('100');
+  });
+
+  it('falls back when the projection is for a different episode', async () => {
+    // User resumed a different episode after the projection was written.
+    seedFeed('100', { episodes: [ep('e100'), ep('e999')] });
+    state.resume.set('100', { id: '100', meta: meta('100'), episode: ep('e100'), updatedAt: 0 });
+    state.lastPlayed.set('100', 'e999');
+    state.progress.set('e999', 30);
+    state.subs = [meta('100')];
+
+    const out = await continueListening();
+
+    expect(out).toHaveLength(1);
+    expect(out[0]!.episode.trackId).toBe('e999');
+    expect(vi.mocked(getCachedFeed)).toHaveBeenCalledWith('100');
+  });
+});
+
 describe('continueListening — no writes', () => {
   it('performs no persistence for any storage layer', async () => {
     seedFeed('100', { lastPlayed: 'e100', progressSec: 30 });
@@ -171,5 +231,6 @@ describe('continueListening — no writes', () => {
     expect(vi.mocked(local.set)).not.toHaveBeenCalled();
     expect(vi.mocked(local.rawSet)).not.toHaveBeenCalled();
     expect(vi.mocked(putCachedFeed)).not.toHaveBeenCalled();
+    expect(vi.mocked(putResume)).not.toHaveBeenCalled();
   });
 });

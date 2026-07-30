@@ -91,7 +91,18 @@ export function applyAccent(stored: string): void {
           .padStart(2, '0'),
       )
       .join('');
+  // Brighter companion. This was a static amber in tokens.css and was never
+  // recomputed, so picking Teal left the scrubber playhead and its glow amber.
+  // Tuned so the default accent still lands on ~#ffc46b (no visible change).
+  const lift = (v: number): number => Math.min(255, Math.round(v * 1.05 + 30));
+  const accent2 =
+    '#' +
+    [r, g, b]
+      .map((v) => lift(v).toString(16).padStart(2, '0'))
+      .join('');
+
   root.style.setProperty('--accent', c);
+  root.style.setProperty('--accent-2', accent2);
   root.style.setProperty('--accent-dim', dim);
   root.style.setProperty('--accent-grad', `linear-gradient(135deg, ${c} 0%, ${dim} 100%)`);
   root.style.setProperty('--accent-glow', `rgba(${r},${g},${b},0.18)`);

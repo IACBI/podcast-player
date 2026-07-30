@@ -9,9 +9,15 @@ declare module 'cloudflare:test' {
   }
 }
 
-async function call(path: string): Promise<Response> {
+const APP_ORIGIN = 'https://iacbi.github.io';
+
+/** Proxy endpoints require the app's Origin, so send it unless a test overrides. */
+async function call(path: string, origin: string | null = APP_ORIGIN): Promise<Response> {
   const ctx = createExecutionContext();
-  const res = await worker.fetch(new Request('https://api.test' + path), env, ctx);
+  const req = new Request('https://api.test' + path, {
+    headers: origin === null ? {} : { origin },
+  });
+  const res = await worker.fetch(req, env, ctx);
   await waitOnExecutionContext(ctx);
   return res;
 }
@@ -106,6 +112,37 @@ describe('/v1/itunes proxy', () => {
     const res = await call('/v1/itunes?url=' + encodeURIComponent('https://itunes.apple.com/lookup?id=1'));
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ resultCount: 0 });
+  });
+});
+
+describe('open-proxy protection', () => {
+  it('rejects a proxy call with no Origin', async () => {
+    const url = encodeURIComponent('https://feeds.example.com/pod.xml');
+    expect((await call('/v1/feed?url=' + url, null)).status).toBe(403);
+    expect((await call('/v1/itunes?url=https://itunes.apple.com/lookup?id=1', null)).status).toBe(
+      403,
+    );
+  });
+
+  it('rejects a proxy call from a foreign Origin', async () => {
+    const url = encodeURIComponent('https://feeds.example.com/pod.xml');
+    expect((await call('/v1/feed?url=' + url, 'https://evil.example')).status).toBe(403);
+  });
+
+  it('allows a localhost Origin (developer machine)', async () => {
+    // Reaches validation rather than the origin gate, so it 400s not 403s.
+    expect((await call('/v1/feed?url=http://127.0.0.1/x', 'http://localhost:5199')).status).toBe(
+      400,
+    );
+  });
+
+  it('leaves the health endpoint open', async () => {
+    expect((await call('/', null)).status).toBe(200);
+  });
+
+  it('does not gate /v1/yt/audio, since <audio> sends no Origin', async () => {
+    // 400 (bad id) proves the request got past the gate instead of being 403'd.
+    expect((await call('/v1/yt/audio?id=nope', null)).status).toBe(400);
   });
 });
 

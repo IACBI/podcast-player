@@ -8,7 +8,7 @@ import type { Episode, FeedMeta, FeedRequest, Subscription } from '../../feeds/t
 import { ytFromToken } from '../../feeds/input-parse';
 import { subscriptions } from '../../storage/subscriptions';
 import { getLastPlayed, getProgress } from '../../storage/progress';
-import { getCachedFeed } from '../../storage/db';
+import { getCachedFeed, getResume } from '../../storage/db';
 import { local } from '../../storage/local';
 
 /** Convert a stored subscription id into a feed request (legacy id scheme). */
@@ -106,9 +106,22 @@ async function buildItem(
   const positionSec = getProgress(episodeId);
   if (positionSec <= 5) return null;
 
-  const cached = await getCachedFeed(feedId);
-  if (!cached) return null;
-  const episode = cached.feed.episodes.find((e) => String(e.trackId) === String(episodeId));
+  // The `resume` projection is one small record. Only fall back to the full
+  // feed cache when it is missing — a feed last played before this store
+  // existed, or one whose last-played episode has since changed.
+  let episode: Episode | undefined;
+  let meta: FeedMeta | undefined;
+
+  const resume = await getResume(feedId);
+  if (resume && String(resume.episode.trackId) === String(episodeId)) {
+    episode = resume.episode;
+    meta = resume.meta;
+  } else {
+    const cached = await getCachedFeed(feedId);
+    if (!cached) return null;
+    episode = cached.feed.episodes.find((e) => String(e.trackId) === String(episodeId));
+    meta = cached.feed.meta;
+  }
   if (!episode) return null;
 
   const percent =
@@ -117,7 +130,7 @@ async function buildItem(
       : 0;
   if (percent >= 96) return null;
 
-  const feed = cached.feed.meta ?? fallbackMeta;
+  const feed = meta ?? fallbackMeta;
   if (!feed) return null;
 
   return { feed, req, episode, positionSec, percent };

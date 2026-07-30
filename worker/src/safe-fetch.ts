@@ -1,7 +1,96 @@
 /** Upstream fetch hardening: SSRF guard, timeout, response size cap. */
 
-const PRIVATE_HOST =
-  /^(localhost|.*\.local|.*\.internal|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?|\[?f[cd][0-9a-f]{2}:)/i;
+const PRIVATE_NAME = /^(localhost|.*\.localhost|.*\.local|.*\.internal|.*\.home\.arpa)$/i;
+
+/** Reserved / non-routable IPv4, given as four octets. */
+function privateIpv4(o: readonly number[]): boolean {
+  const a = o[0] ?? 0;
+  const b = o[1] ?? 0;
+  if (a === 0 || a === 127 || a === 10) return true; // this-network, loopback, private
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true; // link-local, incl. cloud metadata
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10
+  if (a >= 224) return true; // multicast and reserved
+  return false;
+}
+
+/**
+ * Expand an IPv6 literal into 8 groups. Also folds an embedded IPv4 tail
+ * (`::ffff:1.2.3.4`) into two groups, so the mapped forms below catch it even
+ * when the URL parser has not already rewritten them to hex.
+ */
+function parseIpv6(addr: string): number[] | null {
+  let s = addr.toLowerCase();
+  const tail4 = /^(.*:)((?:\d{1,3}\.){3}\d{1,3})$/.exec(s);
+  if (tail4) {
+    const o = (tail4[2] ?? '').split('.').map(Number);
+    if (o.length !== 4 || o.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    const hi = (((o[0] ?? 0) << 8) | (o[1] ?? 0)).toString(16);
+    const lo = (((o[2] ?? 0) << 8) | (o[3] ?? 0)).toString(16);
+    s = `${tail4[1] ?? ''}${hi}:${lo}`;
+  }
+
+  const halves = s.split('::');
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(':') : [];
+  let groups: string[];
+  if (halves.length === 1) {
+    groups = head;
+  } else {
+    const rest = halves[1] ? halves[1].split(':') : [];
+    const fill = 8 - head.length - rest.length;
+    if (fill < 0) return null;
+    groups = [...head, ...Array<string>(fill).fill('0'), ...rest];
+  }
+  if (groups.length !== 8) return null;
+
+  const out = groups.map((g) => (g === '' ? 0 : parseInt(g, 16)));
+  if (out.some((n) => Number.isNaN(n) || n < 0 || n > 0xffff)) return null;
+  return out;
+}
+
+function privateIpv6(g: readonly number[]): boolean {
+  const first = g[0] ?? 0;
+  if (g.every((x) => x === 0)) return true; // :: (unspecified — routes to localhost)
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true; // ::1
+  if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+  if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+
+  // Forms that carry an IPv4 address: mapped, compatible, and the NAT64
+  // well-known prefix. All three reach the embedded address, so apply v4 rules.
+  const zeroTo5 = g.slice(0, 5).every((x) => x === 0);
+  const mapped = zeroTo5 && g[5] === 0xffff;
+  const compat = zeroTo5 && g[5] === 0;
+  const nat64 = first === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0);
+  if (mapped || compat || nat64) {
+    const hi = g[6] ?? 0;
+    const lo = g[7] ?? 0;
+    return privateIpv4([hi >> 8, hi & 0xff, lo >> 8, lo & 0xff]);
+  }
+  return false;
+}
+
+/**
+ * True for hosts that must never be proxied. Exported for direct testing.
+ *
+ * Hostnames arrive WHATWG-normalized, so decimal/hex/octal IPv4 and compressed
+ * IPv6 are already in canonical form. An IPv6 literal we cannot parse is
+ * refused rather than allowed.
+ */
+export function isPrivateHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (!h) return true;
+  if (PRIVATE_NAME.test(h)) return true;
+
+  const bracketed = h.startsWith('[') && h.endsWith(']');
+  if (bracketed || h.includes(':')) {
+    const g = parseIpv6(bracketed ? h.slice(1, -1) : h);
+    return g ? privateIpv6(g) : true;
+  }
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return privateIpv4(h.split('.').map(Number));
+  return false;
+}
 
 /** Validate a user-supplied URL for proxying. Returns a parsed URL or null. */
 export function safeTarget(raw: string | undefined): URL | null {
@@ -13,7 +102,7 @@ export function safeTarget(raw: string | undefined): URL | null {
     return null;
   }
   if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-  if (PRIVATE_HOST.test(u.hostname)) return null;
+  if (isPrivateHost(u.hostname)) return null;
   if (u.username || u.password) return null;
   return u;
 }

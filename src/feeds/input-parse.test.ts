@@ -60,4 +60,10 @@ describe('parseDirectInput', () => {
   it('returns null for search terms', () => {
     expect(parseDirectInput('teknoloji')).toBeNull();
   });
+  it('refuses plaintext and script schemes', () => {
+    expect(parseDirectInput('http://feeds.example.com/pod')).toBeNull();
+    expect(parseDirectInput('javascript:alert(1)')).toBeNull();
+    expect(parseDirectInput('data:text/xml,<rss/>')).toBeNull();
+    expect(parseDirectInput('file:///etc/passwd')).toBeNull();
+  });
 });

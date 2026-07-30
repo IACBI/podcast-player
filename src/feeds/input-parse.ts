@@ -46,6 +46,7 @@ export function parseDirectInput(raw: string): FeedRequest | null {
   if (id) return { kind: 'itunes', id };
   const yt = extractYouTube(raw);
   if (yt) return { kind: 'yt', info: yt };
-  if (/^https?:\/\//i.test(raw)) return { kind: 'rss', url: raw };
+  // https only, matching the enclosure rule in rss-parser and the CSP.
+  if (/^https:\/\//i.test(raw)) return { kind: 'rss', url: raw };
   return null;
 }

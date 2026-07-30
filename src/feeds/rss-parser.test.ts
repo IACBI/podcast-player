@@ -30,6 +30,12 @@ const FEED = `<?xml version="1.0" encoding="UTF-8"?>
     <enclosure url="https://cdn.example.com/4.mp3" type="audio/mpeg"/>
     <itunes:duration>62:03</itunes:duration>
   </item>
+  <item>
+    <title>Episode cover</title>
+    <guid>guid-5</guid>
+    <enclosure url="https://cdn.example.com/5.mp3" type="audio/mpeg"/>
+    <itunes:image href="https://img.example.com/ep5.jpg"/>
+  </item>
 </channel>
 </rss>`;
 
@@ -39,9 +45,17 @@ describe('parseRss', () => {
     expect(r.title).toBe('Test Pod');
     expect(r.author).toBe('Author X');
     expect(r.art).toBe('https://img.example.com/a.jpg');
-    expect(r.episodes.map((e) => e.trackId)).toEqual(['guid-1', 'guid-4']);
+    expect(r.episodes.map((e) => e.trackId)).toEqual(['guid-1', 'guid-4', 'guid-5']);
     expect(r.episodes[0]?.trackTimeMillis).toBe((1 * 3600 + 2 * 60 + 3) * 1000);
     expect(r.episodes[1]?.trackTimeMillis).toBe((62 * 60 + 3) * 1000);
+  });
+
+  it('picks up per-episode <itunes:image>, leaving it unset otherwise', () => {
+    const r = parseRss(FEED);
+    expect(r.episodes.find((e) => e.trackId === 'guid-5')?.art).toBe(
+      'https://img.example.com/ep5.jpg',
+    );
+    expect(r.episodes.find((e) => e.trackId === 'guid-1')?.art).toBeUndefined();
   });
 
   it('throws on invalid xml', () => {

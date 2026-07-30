@@ -70,9 +70,24 @@ export function initWaveform(
     if (dur) wrap.setAttribute('aria-valuetext', fmtTime(pbCurrent()) + ' / ' + fmtTime(dur));
   }
 
+  // The hover bubble means pointermove fires at raw device rate (up to 1 kHz on
+  // a high-polling-rate mouse), and every call used to force a layout. Cache the
+  // rect and invalidate it only when it can actually have moved.
+  let cachedRect: DOMRect | null = null;
+  function rect(): DOMRect {
+    if (!cachedRect) cachedRect = wrap.getBoundingClientRect();
+    return cachedRect;
+  }
+  const invalidateRect = (): void => {
+    cachedRect = null;
+  };
+  wrap.addEventListener('pointerenter', invalidateRect);
+  window.addEventListener('resize', invalidateRect);
+  window.addEventListener('scroll', invalidateRect, { passive: true, capture: true });
+
   function frac(clientX: number): number {
-    const rect = wrap.getBoundingClientRect();
-    const f = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const r = rect();
+    const f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
     // .signal-layers is mirrored under [dir="rtl"] — invert so the visual
     // start (right edge) maps to 0, matching the mini player's math.
     return document.documentElement.dir === 'rtl' ? 1 - f : f;
@@ -107,9 +122,21 @@ export function initWaveform(
     seekAt(e.clientX);
     showTip(e.clientX);
   });
+  // Coalesce to one update per frame: several pointermoves can arrive between
+  // paints and only the last one is visible.
+  let pendingX: number | null = null;
+  let moveRaf = 0;
   wrap.addEventListener('pointermove', (e) => {
-    showTip(e.clientX);
-    if (scrubbing) seekAt(e.clientX);
+    pendingX = e.clientX;
+    if (moveRaf) return;
+    moveRaf = requestAnimationFrame(() => {
+      moveRaf = 0;
+      const x = pendingX;
+      pendingX = null;
+      if (x === null) return;
+      showTip(x);
+      if (scrubbing) seekAt(x);
+    });
   });
   wrap.addEventListener('pointerup', endScrub);
   wrap.addEventListener('pointercancel', endScrub);

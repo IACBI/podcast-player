@@ -23,7 +23,9 @@ export function parseLocation(): Route {
   const rss = p.get('rss');
   const yt = p.get('yt');
   if (pid && /^\d{4,14}$/.test(pid)) return { kind: 'feed', req: { kind: 'itunes', id: pid } };
-  if (rss && /^https?:\/\//i.test(rss)) return { kind: 'feed', req: { kind: 'rss', url: rss } };
+  // https only: ?rss= is attacker-craftable, so it must not be a lever for
+  // making the app fetch arbitrary plaintext URLs.
+  if (rss && /^https:\/\//i.test(rss)) return { kind: 'feed', req: { kind: 'rss', url: rss } };
   if (yt) {
     const ref = ytFromToken(yt);
     if (ref) return { kind: 'feed', req: { kind: 'yt', info: ref } };

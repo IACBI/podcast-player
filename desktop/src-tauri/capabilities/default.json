@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "enables the default permissions",
+  "description": "Default permissions only. Deliberately no `remote` field: the window loads https://iacbi.github.io/seseri/, and under Tauri v2 a remote origin gets IPC access only when a capability names it. Adding `remote` here would hand the live web page access to the Rust side, so it must stay absent.",
   "windows": [
     "main"
   ],

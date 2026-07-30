@@ -9,6 +9,8 @@ interface ItunesLookupRow {
   trackName?: string;
   artistName?: string;
   artworkUrl100?: string;
+  /** Also returned for podcasts, and a safer base than the 100px thumbnail. */
+  artworkUrl600?: string;
   trackCount?: number;
   trackId?: number;
   releaseDate?: string;
@@ -53,7 +55,10 @@ export async function lookupPodcast(id: string, signal?: AbortSignal): Promise<I
     id: String(id),
     name: metaRow?.collectionName || metaRow?.trackName || '',
     artist: metaRow?.artistName || '',
-    art: metaRow?.artworkUrl100 || '',
+    // Prefer the 600px rendition: `artAt()` upgrades either one at render time,
+    // but starting from 600 keeps the artwork usable if Apple ever changes the
+    // URL scheme the rewrite depends on.
+    art: metaRow?.artworkUrl600 || metaRow?.artworkUrl100 || '',
   };
 
   const episodes: Episode[] = data.results

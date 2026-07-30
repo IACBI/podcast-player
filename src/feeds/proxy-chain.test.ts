@@ -24,6 +24,31 @@ describe('fetchTextProxied', () => {
     await expect(fetchTextProxied('https://example.com/feed')).rejects.toThrow('fetch failed');
   });
 
+  it('refuses to hand a credential-bearing feed to the public proxies', async () => {
+    const fetchMock = vi.fn(async () => res('<rss>leaked</rss>'));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      fetchTextProxied('https://www.patreon.com/rss/x?auth=Ab3xK9zQ11mNpQrStUvWxYz'),
+    ).rejects.toThrow('private-feed');
+    // The point of the guard: no request may leave at all.
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('still proxies an ordinary public feed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => res('<rss>ok</rss>')));
+    await expect(fetchTextProxied('https://feeds.example.com/pod.xml')).resolves.toBe(
+      '<rss>ok</rss>',
+    );
+  });
+
+  it('skips the guard for app-built URLs (YouTube channel ids look opaque)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => res('<feed>yt</feed>')));
+    const url = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCuAXFkgsw1L7xaCfnd5JJOw';
+    await expect(fetchTextProxied(url, undefined, undefined, false)).resolves.toBe('<feed>yt</feed>');
+    // ...and would be refused with the guard on, which is why atom.ts opts out.
+    await expect(fetchTextProxied(url)).rejects.toThrow('private-feed');
+  });
+
   it('propagates an abort', async () => {
     vi.stubGlobal(
       'fetch',

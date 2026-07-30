@@ -35,6 +35,7 @@
   <h2>Üçüncü Taraf Hizmetler</h2>
   <p>Uygulama, Apple Inc.'in herkese açık <a href="https://affiliate.itunes.apple.com/resources/documentation/itunes-store-web-service-search-api/" target="_blank" rel="noopener noreferrer">iTunes Arama API</a>'sini kullanmaktadır. Bu API'nin gizlilik koşulları Apple'a aittir.</p>
   <p>Doğrudan RSS besleme URL'si girdiğinizde, besleme tarayıcı CORS kısıtlamaları nedeniyle herkese açık proxy hizmetleri (<a href="https://allorigins.win/" target="_blank" rel="noopener noreferrer">AllOrigins</a> veya <a href="https://corsproxy.io/" target="_blank" rel="noopener noreferrer">corsproxy.io</a>) üzerinden çekilir; bu hizmetler girdiğiniz besleme URL'sini görebilir.</p>
+  <p>URL'sinde bir abonelik anahtarı taşıyan özel (ücretli) beslemeler bu herkese açık proxy'lere <strong>hiçbir zaman</strong> gönderilmez; yalnızca uygulamanın kendi sunucusu üzerinden çekilir. Böyle bir besleme, sunucu yapılandırılmamışsa yüklenmez ve nedenini açıklayan bir hata gösterir.</p>
   <p>Arayüz yazı tipleri <a href="https://fonts.google.com/" target="_blank" rel="noopener noreferrer">Google Fonts</a> üzerinden yüklenir; bu sırada Google IP adresinizi görebilir. Bölüm ses dosyaları doğrudan ilgili podcast'in sunucusundan oynatılır.</p>
 
   <h2>İletişim</h2>
@@ -62,6 +63,7 @@
   <h2>Third-Party Services</h2>
   <p>The app uses Apple Inc.'s public <a href="https://affiliate.itunes.apple.com/resources/documentation/itunes-store-web-service-search-api/" target="_blank" rel="noopener noreferrer">iTunes Search API</a>. That API's privacy terms belong to Apple.</p>
   <p>When you enter a direct RSS feed URL, the feed is fetched through public proxy services (<a href="https://allorigins.win/" target="_blank" rel="noopener noreferrer">AllOrigins</a> or <a href="https://corsproxy.io/" target="_blank" rel="noopener noreferrer">corsproxy.io</a>) due to browser CORS restrictions; these services can see the feed URL you enter.</p>
+  <p>Private (paid) feeds that carry a subscriber token in their URL are <strong>never</strong> sent to those public proxies — they are fetched only through the app's own backend. Such a feed will refuse to load, with an explanatory message, if no backend is configured.</p>
   <p>Interface fonts are loaded from <a href="https://fonts.google.com/" target="_blank" rel="noopener noreferrer">Google Fonts</a>, which may see your IP address in the process. Episode audio is streamed directly from each podcast's own host.</p>
 
   <h2>Contact</h2>

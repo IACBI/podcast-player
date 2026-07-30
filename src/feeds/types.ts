@@ -17,8 +17,14 @@ export interface Episode {
   trackTimeMillis: number;
   /** YouTube-only: video id for Piped resolution / iframe fallback. */
   ytId?: string;
-  /** Per-episode artwork (YouTube thumbnails). */
+  /** Per-episode artwork: RSS `<itunes:image>` or a YouTube thumbnail. */
   art?: string;
+  /**
+   * Raw show-notes markup from the feed — untrusted. Never render this; run it
+   * through `parseShowNotes` (feeds/show-notes.ts), which yields text and
+   * https-only links. Optional so older cached feeds stay valid.
+   */
+  description?: string;
 }
 
 /**

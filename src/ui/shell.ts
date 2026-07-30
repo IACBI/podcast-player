@@ -85,9 +85,13 @@ const MINI_PLAYER = `
 const NP_SHEET = `
 <div class="np-sheet" id="npSheet" role="dialog" aria-modal="false" data-i18n-aria="now_playing" aria-label="Şu an çalıyor"></div>`;
 
+// Assembled at module scope so the assignment below is plainly a static
+// constant: innerHTML must never be handed a runtime-built string.
+const SHELL_HTML =
+  ICON_SPRITE + '<div class="app-frame">' + NAV + MAIN + '</div>' + MINI_PLAYER + NP_SHEET;
+
 export function renderShell(app: HTMLElement): void {
-  app.innerHTML =
-    ICON_SPRITE + '<div class="app-frame">' + NAV + MAIN + '</div>' + MINI_PLAYER + NP_SHEET;
+  app.innerHTML = SHELL_HTML;
 }
 
 /** getElementById that must succeed (shell markup is static). */

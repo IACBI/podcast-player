@@ -73,14 +73,14 @@ npm install          # bir kez
 npx tauri build      # ilk seferde Rust bağımlılıklarını derler (5-15 dk)
 ```
 
-Çıktı: `desktop/src-tauri/target/release/bundle/nsis/Seseri_4.0.0_x64-setup.exe`
+Çıktı: `desktop/src-tauri/target/release/bundle/nsis/Seseri_4.1.26_x64-setup.exe`
 
 ### Dağıtma (GitHub Releases)
 
 ```bash
-gh release create v4.0.0 \
-  "desktop/src-tauri/target/release/bundle/nsis/Seseri_4.0.0_x64-setup.exe" \
-  --repo IACBI/seseri --title "Seseri 4.0.0" \
+gh release create v4.1.26 \
+  "desktop/src-tauri/target/release/bundle/nsis/Seseri_4.1.26_x64-setup.exe" \
+  --repo IACBI/seseri --title "Seseri 4.1.26" \
   --notes "Windows kurulumu — indir, çalıştır, kur."
 ```
 

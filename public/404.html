@@ -4,10 +4,9 @@
 <meta charset="UTF-8">
 <!-- GitHub Pages SPA fallback — redirect all 404s to index.html so PWA routes work -->
 <script>
-  // Preserve the path/query in sessionStorage, then redirect to the app root.
-  // Derive the base from the first path segment (the GitHub Pages project name),
-  // so this keeps working no matter what the repo is called.
-  sessionStorage.setItem('redirect', location.href);
+  // Redirect to the app root, keeping the query (deep links live in ?podcast=,
+  // ?rss=, ?yt=, ?view=). Derive the base from the first path segment (the
+  // GitHub Pages project name) so this works whatever the repo is called.
   var seg = location.pathname.split('/')[1] || '';
   var base = seg ? '/' + seg + '/' : '/';
   location.replace(base + location.search);

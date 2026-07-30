@@ -39,7 +39,9 @@ Playing** sheet for transport, sleep timer, speed and queue access.
 | 🧾 **Play queue** | queue any episode as "up next" — the queue wins over list order; own page under **Queue** |
 | 🎧 **Mini transport** | leaving a feed keeps playing; the persistent dock carries skip/play controls (plus prev/next & speed on wide screens) and a seekable progress line — the chevron expands the full **Now Playing** sheet |
 | 🌊 **Frequency-line scrubber** | signature waveform motif — drag-to-seek hero scrubber in Now Playing, animated line on the mini player while playing |
-| 🎛 **Now Playing sheet** | full-screen (mobile) / floating panel (desktop): play/pause, prev/next, skip, speed 0.5×–2.5×, sleep timer, resume position |
+| 🎛 **Now Playing sheet** | full-screen (mobile) / floating panel (desktop): play/pause, prev/next, skip, speed 0.5×–2.5×, sleep timer, resume position, episode notes |
+| 🌙 **Sleep timer** | presets or any duration, or stop at the end of the episode; live countdown, **+5 min**, gentle fade-out, pauses with playback and survives a reload |
+| 🖼 **Sharp artwork** | the right rendition is requested per surface, so covers are never upscaled from a thumbnail; the Now Playing background can pick up the cover's dominant colour (toggle in Settings → Appearance) |
 | 🖥 **Desktop layout** | ≥900px swaps the tab bar for a persistent left sidebar (Home/Search/Library/Settings) |
 | ⭐ **Subscriptions** | star podcasts; live in **Library**; OPML import/export + JSON backup |
 | 🎨 **Themes** | Auto (system), Dark, Light, OLED Black; 7 accent colors (amber "dial glow" default) |
@@ -56,7 +58,9 @@ Active while a podcast feed or the Now Playing sheet is open (not while typing i
 | `Space` | Play / pause |
 | `←` / `→` | Seek back / forward |
 | `↑` / `↓` | Previous / next episode |
+| `Home` / `End` | Jump to the start / end of the episode |
 | `Esc` | Close the Now Playing sheet |
+| `?` | Show the shortcut list |
 
 ### 🚀 Getting started
 
@@ -94,10 +98,12 @@ and falls back to public CORS proxies automatically when it is unreachable.
 ├── index.html             # Vite entry (CSP, meta, manifest link)
 ├── src/
 │   ├── app.ts             # boot & wiring
-│   ├── feeds/             # iTunes / RSS / input parsing / proxy chain / resolveFeed
+│   ├── lib/               # format helpers, safe DOM/text utils, artwork rendition URLs (art.ts)
+│   ├── feeds/             # iTunes / RSS / input parsing / proxy chain / resolveFeed /
+│   │                      # show notes (HTML→text), credential-URL guard for private feeds
 │   ├── youtube/           # Piped/Invidious/Atom resolvers + iframe embed fallback
 │   ├── player/            # audio engine, media session, sleep timer, offline downloads
-│   ├── state/             # signals: settings, queue, now-playing
+│   ├── state/             # signals: settings, queue, now-playing, sleep timer
 │   ├── storage/           # localStorage (legacy keys), IndexedDB, OPML
 │   ├── ui/
 │   │   ├── playback-controller.ts  # headless playback session, shared by every view
@@ -105,7 +111,8 @@ and falls back to public CORS proxies automatically when it is unreachable.
 │   │   ├── views.ts        # view registry (show/hide, focus hand-off)
 │   │   ├── nav.ts          # tab bar / sidebar controller
 │   │   ├── router.ts       # ?podcast= / ?rss= / ?yt= / ?view= ↔ history
-│   │   └── shell.ts, theme.ts, mini-player.ts, toast.ts, waveform.ts, confirm.ts, …
+│   │   └── shell.ts, theme.ts, mini-player.ts, waveform.ts, art-tile.ts, ambient.ts,
+│   │       sleep-control.ts, shortcuts.ts, number-prompt.ts, toast.ts, confirm.ts, …
 │   ├── i18n/              # 8 languages, compile-time key completeness
 │   ├── styles/
 │   │   ├── tokens.css, themes.css, base.css, layout.css, controls.css,
@@ -116,9 +123,9 @@ and falls back to public CORS proxies automatically when it is unreachable.
 │   └── sw.ts              # service worker (injectManifest)
 ├── worker/                # Cloudflare Worker API (Hono): /v1/feed /v1/itunes /v1/yt/*
 ├── public/                # manifest, icons (incl. maskable/monochrome), screenshots,
-│                          # privacy-policy, 404, .well-known/assetlinks.json
+│                          # privacy-policy, 404
 ├── scripts/               # icon/screenshot generators + headless smoke tests
-└── docs/                  # TESTPLAN, STORE guide, ci.yml, reference screenshots
+└── docs/                  # TESTPLAN, STORE guide, reference screenshots
 ```
 
 ### ☁️ Backend (optional but recommended)
@@ -142,7 +149,10 @@ cron-health-checked instance pool. Deploy with `npx wrangler deploy`, then set
 ### 🔒 Privacy
 
 No analytics, no accounts. Settings/progress stay in `localStorage`; downloads
-stay in your browser's Cache API. See
+stay in your browser's Cache API. Feed URLs that carry a private/subscriber
+token (Patreon, Memberful, Substack-style) are never sent to the public CORS
+proxies — they only go through the app's own Worker, and fail with a clear
+message if none is configured; ordinary public feeds are unaffected. See
 [public/privacy-policy.html](public/privacy-policy.html).
 
 ### 👤 Author / License
@@ -184,13 +194,28 @@ oynatma, uyku zamanlayıcısı, hız ve kuyruğa erişim için tam ekran **Şimd
 | 🧾 **Kuyruk** | bölümü "sıradaki" olarak işaretle — kuyruk, liste sırasından önce gelir; kendi sayfası **Kuyruk** görünümünde |
 | 🎧 **Mini transport** | feed'den çıkınca çalma sürer; kalıcı dock üzerinde atlama/oynat kontrolleri (geniş ekranda önceki/sonraki ve hız) ve dokunarak sarılabilir ilerleme çizgisi — ok simgesi tam **Şimdi Çalıyor** panelini açar |
 | 🌊 **Frekans-çizgisi dalga-form** | imza motif — Şimdi Çalıyor panelinde sürüklenebilir kahraman dalga-form, çalarken mini oynatıcıda animasyonlu çizgi |
-| 🎛 **Şimdi Çalıyor paneli** | tam ekran (mobil) / yüzen panel (masaüstü): oynat/duraklat, önceki/sonraki, atlama, 0.5×–2.5× hız, uyku zamanlayıcısı |
+| 🎛 **Şimdi Çalıyor paneli** | tam ekran (mobil) / yüzen panel (masaüstü): oynat/duraklat, önceki/sonraki, atlama, 0.5×–2.5× hız, uyku zamanlayıcısı, kaldığın yerden devam etme, bölüm notları |
+| 🌙 **Uyku zamanlayıcısı** | hazır süreler veya istediğin süre, ya da bölüm sonunda dur; canlı geri sayım, **+5 dk**, yumuşak sesle kısılma, duraklatınca durur ve sayfa yenilenince kaybolmaz |
+| 🖼 **Net kapak görselleri** | her yüzey için doğru çözünürlük istenir, kapaklar küçük bir görselden büyütülmez; Şimdi Çalıyor arka planı kapağın baskın rengini alabilir (Ayarlar → Görünüm'den kapatılabilir) |
 | 🖥 **Masaüstü düzeni** | ≥900px'te sekme çubuğu yerini kalıcı soldan kenar çubuğuna bırakır (Ana Sayfa/Ara/Kütüphane/Ayarlar) |
 | ⭐ **Abonelikler** | yıldızla; **Kütüphane**'de yaşar; OPML içe/dışa aktarma + JSON yedek |
 | 🎨 **Temalar** | Otomatik (sistem), Koyu, Açık, OLED Siyah; 7 vurgu rengi (varsayılan kehribar "kadran ışıltısı") |
 | 🌍 **Çok dilli** | TR / EN / DE / FR / ES / AR / JA / RU (RTL dahil) |
 | 📲 **Kurulabilir** | maskable/monochrome ikonlu PWA, kısayollar, mağaza görselleri |
 | ♿ **Erişilebilir** | klavyeyle kullanılabilir görünümler, aria-live durum/busy, gezinmede odak yönetimi, `prefers-reduced-motion` |
+
+#### Klavye kısayolları
+
+Bir podcast feed'i ya da Şimdi Çalıyor paneli açıkken etkindir (bir alana yazarken değil):
+
+| Tuş | İşlev |
+|-----|--------|
+| `Space` | Oynat / duraklat |
+| `←` / `→` | Geri / ileri sar |
+| `↑` / `↓` | Önceki / sonraki bölüm |
+| `Home` / `End` | Bölümün başına / sonuna git |
+| `Esc` | Şimdi Çalıyor panelini kapat |
+| `?` | Kısayol listesini göster |
 
 ### 🚀 Hızlı başlangıç
 
@@ -219,7 +244,11 @@ ulaşamazsa otomatik olarak halka açık CORS proxy'lerine düşer.
 ### 🔒 Gizlilik
 
 Analitik yok, hesap yok. Ayarlar/ilerleme `localStorage`'da, indirilenler
-tarayıcının Cache API'sinde kalır. Bkz.
+tarayıcının Cache API'sinde kalır. Patreon / Memberful / Substack tarzı özel/
+abone anahtarı taşıyan feed URL'leri herkese açık CORS proxy'lerine asla
+gönderilmez — yalnızca uygulamanın kendi Worker'ı üzerinden geçer; Worker
+yapılandırılmamışsa net bir hata mesajıyla başarısız olur. Sıradan herkese
+açık feed'ler bundan etkilenmez. Bkz.
 [public/privacy-policy.html](public/privacy-policy.html).
 
 ### 👤 Yazar / Lisans

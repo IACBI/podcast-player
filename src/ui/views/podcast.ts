@@ -14,11 +14,12 @@ import { registerView, viewEl, type View } from '../views';
 import { h, icon } from '../h';
 import { stateBox } from '../states';
 import { fmtDate, fmtDur } from '../../lib/format';
-import { httpsOnly } from '../../lib/safe';
+import { artAt, artSrcset } from '../../lib/art';
+import { dprWidths, HEADER_ART_PX } from '../art-tile';
 import { t } from '../../i18n';
 import { getProgress } from '../../storage/progress';
-import { queuePosition } from '../../state/queue';
-import { settings } from '../../state/settings';
+import { queuePositions } from '../../state/queue';
+import { settings, type Settings } from '../../state/settings';
 import { isSubscribed, toggleSubscription } from '../../storage/subscriptions';
 import { confirmDialog } from '../confirm';
 import { toast } from '../toast';
@@ -106,8 +107,41 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
     return list;
   }
 
-  function episodeRow(ep: PlaybackSession['filtered'][number], i: number, s: PlaybackSession): HTMLElement {
-    const S = settings();
+  type Episode = PlaybackSession['filtered'][number];
+
+  /**
+   * Everything about a row that can change without the list itself changing.
+   * Compared per row so an unrelated session update touches no DOM at all.
+   */
+  function rowSignature(
+    ep: Episode,
+    i: number,
+    s: PlaybackSession,
+    S: Settings,
+    qPos: Map<string, number>,
+  ): string {
+    const id = String(ep.trackId);
+    const savedSec = getProgress(id);
+    const durSec = ep.trackTimeMillis ? ep.trackTimeMillis / 1000 : 0;
+    const pct = durSec && savedSec > 5 ? Math.min(100, (savedSec / durSec) * 100) : 0;
+    return [
+      i === s.currentIndex ? 1 : 0,
+      qPos.get(id) ?? 0,
+      s.downloadedIds.has(id) ? 1 : 0,
+      pct.toFixed(1),
+      S.resumePos ? 1 : 0,
+      S.showDl ? 1 : 0,
+      ep.trackName,
+    ].join('');
+  }
+
+  function episodeRow(
+    ep: Episode,
+    i: number,
+    s: PlaybackSession,
+    S: Settings,
+    qPos: Map<string, number>,
+  ): HTMLElement {
     const id = String(ep.trackId);
     const savedSec = getProgress(id);
     const hasSaved = S.resumePos && savedSec > 5;
@@ -156,16 +190,16 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
     );
 
     const actions = h('div', { className: 'ep-actions' });
-    const qPos = queuePosition(id);
+    const pos = qPos.get(id) ?? 0;
     actions.append(
       h(
         'button',
         {
-          className: 'ep-act ep-q-btn icon-btn' + (qPos ? ' queued' : ''),
+          className: 'ep-act ep-q-btn icon-btn' + (pos ? ' queued' : ''),
           dataset: { idx: String(i), act: 'queue' },
           attrs: { 'aria-label': t('btn_queue'), title: t('btn_queue') },
         },
-        qPos ? h('span', { className: 'ep-q-pos' }, String(qPos)) : icon('ic-queue'),
+        pos ? h('span', { className: 'ep-q-pos' }, String(pos)) : icon('ic-queue'),
       ),
     );
     if (S.showDl) {
@@ -196,9 +230,29 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
     return row;
   }
 
+  /**
+   * `render` runs on every session change, and most of those affect one row or
+   * none: a settings edit, a queue toggle, a background title arriving, a
+   * status transition. Rebuilding a full archive each time (feeds routinely
+   * carry thousands of items and there is no virtualization) was the app's
+   * biggest source of jank. So the list is keyed by trackId and only rows whose
+   * signature actually changed are replaced.
+   */
+  let renderedIds: string[] = [];
+  const rowEls = new Map<string, HTMLElement>();
+  const rowSigs = new Map<string, string>();
+  let lastScrolledTrackId: string | null = null;
+
+  function resetRowCache(): void {
+    renderedIds = [];
+    rowEls.clear();
+    rowSigs.clear();
+  }
+
   function renderList(s: PlaybackSession): void {
     const loading = s.status.kind === 'loading';
     if (!s.filtered.length) {
+      resetRowCache();
       if (loading) {
         epList.replaceChildren(skeleton());
         epList.setAttribute('aria-busy', 'true');
@@ -214,13 +268,47 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
       }
       return;
     }
-    const frag = document.createDocumentFragment();
-    s.filtered.forEach((ep, i) => frag.append(episodeRow(ep, i, s)));
-    epList.replaceChildren(frag);
+
+    const S = settings();
+    // Built once per render: a per-row queuePosition() lookup would make this
+    // O(episodes × queue) on every session change.
+    const qPos = queuePositions();
+    const ids = s.filtered.map((ep) => String(ep.trackId));
+    const sameList = ids.length === renderedIds.length && ids.every((id, i) => renderedIds[i] === id);
+
+    if (!sameList) {
+      // Order, filter or feed changed — rebuild once.
+      resetRowCache();
+      const frag = document.createDocumentFragment();
+      s.filtered.forEach((ep, i) => {
+        const id = ids[i] as string;
+        const row = episodeRow(ep, i, s, S, qPos);
+        rowEls.set(id, row);
+        rowSigs.set(id, rowSignature(ep, i, s, S, qPos));
+        frag.append(row);
+      });
+      renderedIds = ids;
+      epList.replaceChildren(frag);
+    } else {
+      s.filtered.forEach((ep, i) => {
+        const id = ids[i] as string;
+        const sig = rowSignature(ep, i, s, S, qPos);
+        if (rowSigs.get(id) === sig) return;
+        const next = episodeRow(ep, i, s, S, qPos);
+        rowEls.get(id)?.replaceWith(next);
+        rowEls.set(id, next);
+        rowSigs.set(id, sig);
+      });
+    }
     epList.setAttribute('aria-busy', 'false');
 
-    if (s.currentIndex >= 0) {
-      epList.querySelector('.ep-item.active')?.scrollIntoView({ block: 'nearest' });
+    // Only follow the playing episode when it actually changes. Doing it on
+    // every render yanked the list out from under anyone browsing it.
+    if (s.currentIndex >= 0 && s.currentTrackId !== lastScrolledTrackId) {
+      lastScrolledTrackId = s.currentTrackId ?? null;
+      rowEls.get(String(s.currentTrackId))?.scrollIntoView({ block: 'nearest' });
+    } else if (s.currentIndex < 0) {
+      lastScrolledTrackId = null;
     }
   }
 
@@ -229,9 +317,20 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
     const meta = s.meta;
     titleEl.textContent = meta?.name || '—';
     authorEl.textContent = meta?.artist || '';
-    const art = meta?.art ? httpsOnly(meta.art) : '';
-    if (art) thumbEl.src = art;
-    else thumbEl.removeAttribute('src');
+    const art = artAt(meta?.art, HEADER_ART_PX);
+    if (art) {
+      thumbEl.src = art;
+      const set = artSrcset(meta?.art, dprWidths(HEADER_ART_PX));
+      if (set) {
+        thumbEl.srcset = set;
+        thumbEl.sizes = `${HEADER_ART_PX}px`;
+      } else {
+        thumbEl.removeAttribute('srcset');
+      }
+    } else {
+      thumbEl.removeAttribute('srcset');
+      thumbEl.removeAttribute('src');
+    }
     thumbEl.classList.toggle('has-art', !!art);
     countEl.textContent = String(s.episodes.length);
     favBtn.classList.toggle('faved', !!(meta && isSubscribed(meta.id)));

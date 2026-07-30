@@ -76,6 +76,30 @@ export function pbPause(): void {
   if (p) p.pauseVideo();
   else audio.pause();
 }
+/**
+ * Volume as 0–1 across both transports (the embed's own scale is 0–100).
+ * Used by the sleep timer's fade-out; there is no volume UI.
+ */
+export function pbGetVolume(): number {
+  try {
+    const p = embedLive();
+    if (p && typeof p.getVolume === 'function') return (p.getVolume() || 0) / 100;
+    return audio.volume;
+  } catch {
+    return 1;
+  }
+}
+export function pbSetVolume(v: number): void {
+  const clamped = Math.max(0, Math.min(1, v));
+  try {
+    const p = embedLive();
+    if (p && typeof p.setVolume === 'function') p.setVolume(Math.round(clamped * 100));
+    else audio.volume = clamped;
+  } catch {
+    /* embed not ready */
+  }
+}
+
 export function pbSeekTo(sec: number): void {
   const p = embedLive();
   if (p) p.seekTo(Math.max(0, sec), true);
@@ -138,9 +162,14 @@ export function handleEmbedState(state: number): void {
   } else if (state === YT_STATE.PAUSED) {
     emit({ type: 'pause' });
     emit({ type: 'timeupdate', current: pbCurrent(), duration: pbDuration() });
+    // Without this the 250 ms poll keeps making cross-iframe getPlayerState()
+    // calls for the rest of the session — while paused, while the sheet is
+    // closed, while the tab is in the background.
+    stopEmbedPoll();
   } else if (state === YT_STATE.ENDED) {
     emit({ type: 'pause' });
     emit({ type: 'ended' });
+    stopEmbedPoll();
   }
 }
 

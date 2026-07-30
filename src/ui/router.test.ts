@@ -31,7 +31,7 @@ describe('parseLocation', () => {
     expect(parseLocation()).toEqual({ kind: 'home' });
   });
 
-  it('parses an http(s) ?rss= url', () => {
+  it('parses an https ?rss= url', () => {
     setUrl('?rss=' + encodeURIComponent('https://feeds.example.com/pod'));
     expect(parseLocation()).toEqual({
       kind: 'feed',
@@ -39,8 +39,14 @@ describe('parseLocation', () => {
     });
   });
 
-  it('rejects a non-http ?rss= value', () => {
-    setUrl('?rss=' + encodeURIComponent('javascript:alert(1)'));
+  it.each([
+    ['javascript:alert(1)'],
+    ['data:text/xml,<rss/>'],
+    // ?rss= is attacker-craftable, so plaintext http must not be a lever for
+    // making the app fetch arbitrary URLs.
+    ['http://feeds.example.com/pod'],
+  ])('rejects a non-https ?rss= value: %s', (raw) => {
+    setUrl('?rss=' + encodeURIComponent(raw));
     expect(parseLocation()).toEqual({ kind: 'home' });
   });
 

@@ -1,5 +1,138 @@
 # Changelog
 
+> **Versioning.** The patch number moves one step at a time and runs up to 99;
+> reaching 100 rolls into the minor instead — `4.1.99` → `4.2.0`. Releases are
+> not semver-major-bumped for feature work.
+
+## 4.1.26 — 2026-07-30
+
+### Artwork resolution
+- **Cover art is no longer upscaled from a thumbnail.** Feeds opened through
+  iTunes search only ever stored `artworkUrl100` — a 100×100 image — which the
+  Now Playing hero then stretched to 300–320 CSS px (600–840 device px on a
+  retina screen). Renditions are now derived per surface from the URL itself
+  (`lib/art.ts`): the hero requests 640–1024 px WebP, list rows request 1×/2×/3×
+  of their box. Because the upgrade happens at render time, existing
+  subscriptions and cached feeds get sharp artwork with no data migration.
+- `<picture>` + WebP on the hero (~4× lighter than the equivalent JPEG), with a
+  one-shot non-WebP retry, since `<picture>` does not fall back on a 404.
+- YouTube thumbnails pick from `default`/`mqdefault`/`hqdefault` only — the
+  larger `sddefault`/`maxresdefault` renditions 404 on older uploads, which
+  inside a `srcset` would render a broken image. Small rows now request
+  `default.jpg` instead of always pulling `mqdefault`.
+- Per-episode `<itunes:image>` is now parsed from RSS; previously every episode
+  fell back to the channel cover.
+- OS media controls advertise 96/256/512 px artwork with `sizes`, prefer the
+  episode's own cover over the feed cover, and report position state so the lock
+  screen can scrub.
+- Fixed: the mini dock kept the previous podcast's cover on a track with no
+  artwork; library rows loaded artwork eagerly; only search rows recovered from
+  a dead artwork URL. All artwork surfaces now share one tile builder.
+
+### Player & interface
+- **Sleep timer rebuilt.** It was a bare `setTimeout`: it kept counting down
+  while playback was paused, was lost on reload, offered three fixed presets and
+  cut the audio dead. Now it counts only while playback is actually running,
+  survives a reload, adds a live countdown and a **+5 min** button, offers any
+  duration (1–600) alongside the presets, can stop at the **end of the episode**
+  instead, and fades out over the last 30 seconds — restoring the volume
+  afterwards, so a cancelled or extended timer never leaves playback muted.
+  "End of episode" also beats the queue and auto-next.
+- The two sleep controls (Now Playing and the mini dock) previously kept each
+  other in sync by reaching across the DOM with `getElementById`. Both now render
+  from one signal and cannot disagree.
+- **Ambient colour from the artwork**: the Now Playing background picks up the
+  cover's dominant colour. Sampling uses a separate off-document image, because
+  setting `crossOrigin` on the visible artwork would make it fail to load
+  outright on hosts that send no CORS header; when sampling is not possible the
+  page simply keeps the user's accent. Never overrides the chosen accent colour,
+  and can be turned off in Settings → Appearance.
+- **Episode notes** in the Now Playing sheet. Feed descriptions are
+  attacker-controlled HTML, so rather than add a sanitizer they are reduced to
+  plain text plus https-only links and rebuilt as real nodes — no markup string
+  ever reaches the DOM, and the app keeps its single runtime dependency.
+  `content:encoded`, `description` and `itunes:summary` are all read.
+- **Keyboard shortcut card** (`?`). The shortcuts already existed but were
+  documented nowhere.
+- The Now Playing sheet is now a real modal: everything behind it is `inert`
+  while it is open (and the sheet itself while dismissed), so focus and the
+  accessibility tree behave correctly without `display: none`, which would kill
+  the YouTube embed.
+- Fixed: `--accent-2` was a static amber that `applyAccent` never recomputed, so
+  choosing Teal (or any non-amber accent) left the scrubber playhead, its glow
+  and the mini progress hover amber.
+
+### Performance
+- **The episode list no longer rebuilds itself on unrelated events.** It is keyed
+  by `trackId` and only rows whose state actually changed are replaced. Measured
+  on a 42-episode feed: an unrelated settings change went from rebuilding every
+  row to **0**, a queue toggle to **1**, switching episode to **2**. A real list
+  change (sort, filter, new feed) still rebuilds once, as it must. Feeds
+  routinely carry thousands of items, so this scales with the archive.
+- The list also stopped stealing the reader's scroll position: `scrollIntoView`
+  now fires only when the playing episode changes. Five queue toggles used to
+  cause five scroll jumps; now zero.
+- Home's "continue listening" rail reads a small `resume` projection from
+  IndexedDB (new store, schema v2) instead of deserializing every subscribed
+  feed's entire archive on every visit home. Falls back to the old path for
+  feeds last played before the store existed.
+- The YouTube embed's 250 ms progress poll never stopped on pause — it kept
+  making cross-iframe calls for the rest of the session, including while the tab
+  was in the background.
+- The scrubber forced a layout on every `pointermove` (up to 1 kHz on a
+  high-polling-rate mouse). The rect is cached and updates are coalesced into a
+  frame; the hover time bubble is unchanged.
+- Offline downloads stream into the Cache API instead of buffering the whole
+  episode in the JS heap — a 150 MB episode was a 150 MB allocation. Available
+  space is now checked first, with a real message instead of a generic failure.
+- Queue rows no longer scan the whole episode list for each title
+  (O(queue × episodes)), and the episode list no longer calls `queuePosition`
+  per row (O(episodes × queue)).
+- `fmtDate` builds one `Intl.DateTimeFormat` per language instead of one per
+  call, and its cache no longer evicts the entries the same render still needs.
+- Capped the background noembed title backfill, which was unbounded across a
+  playlist of any size.
+- Progress/scrubber DOM writes are skipped while the tab is hidden or the Now
+  Playing sheet is dismissed.
+- Deliberately **not** done: lazy-loading the 8 locale dictionaries. Measured,
+  the 7 inactive ones are ~12 KB of a 47 KB gzipped bundle, and `applyLang` runs
+  before first paint — making it async would trade a flash of untranslated text
+  (and a late RTL flip for Arabic) for a small win.
+
+### Security
+- SSRF guard rewritten to parse addresses instead of pattern-matching them.
+  IPv4-mapped IPv6 (`::ffff:127.0.0.1`, `::ffff:169.254.169.254`), the
+  unspecified address `::`, CGNAT `100.64/10`, link-local `fe80::/10` and
+  NAT64-embedded private addresses all previously passed the check.
+- `/v1/yt/audio` was entirely exempt from rate limiting. It now has its own
+  budget, counted on stream starts only so seeking still works.
+- The audio chunk fetch used a bare `fetch`, bypassing the Worker's own manual
+  redirect re-validation; it now goes through `fetchWithTimeout`, and the
+  upstream URL is host-checked before streaming.
+- Proxy endpoints now require the app's `Origin`, so the Worker cannot be used
+  as a general-purpose open proxy or to seed its edge cache. `/v1/yt/audio` is
+  excluded because `<audio>` sends no `Origin`.
+- **Private feed URLs are no longer sent to public CORS proxies.** Patreon /
+  Memberful / Substack-style feeds carry a subscriber token in the URL, and all
+  three proxies were being raced in parallel — disclosing it to three operators
+  on every open and refresh.
+- `audio.src` was the one media sink `httpsOnly` never covered, despite
+  receiving URLs from third-party Piped instances.
+- `?rss=` and the search box accepted plain `http://`, unlike RSS enclosures
+  which already required `https:`.
+- CSP: added `base-uri 'none'` and `form-action 'none'` (neither inherits from
+  `default-src`). Tauri now ships a real CSP instead of `null`.
+- Service worker cache name is derived from the build manifest. It was a
+  hardcoded constant *and* on the never-delete list, so the shell cache could
+  never be pruned: superseded assets accumulated indefinitely and non-hashed
+  files stayed stale until the constant was bumped by hand. Those now
+  revalidate in the background.
+- The no-interpolation-into-`innerHTML` invariant is enforced by lint rather
+  than by prose in `CONTRIBUTING.md`.
+- Removed a dead `sessionStorage('redirect')` write in `404.html` that nothing
+  read, and the unreachable `assetlinks.json` placeholder (Android reads app
+  links only from the origin root, and the app is served from `/seseri/`).
+
 ## 4.0.0 — 2026-07-12
 
 ### "Sinyal" — new visual identity

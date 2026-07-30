@@ -47,6 +47,34 @@
   gap: var(--s-5);
 }
 
+/* ─ Ambient wash sampled from the artwork (ui/ambient.ts) ─
+   Sits behind everything in the sheet and never tints text: the sheet's own
+   surface stays on top at full opacity, so contrast is unchanged in all four
+   themes. Absent tokens (unsupported host, or the setting is off) simply mean
+   no wash — nothing else depends on them. */
+.np-inner { position: relative; }
+.np-inner::before {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  block-size: 62%;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    var(--np-ambient-soft, transparent) 0%,
+    transparent 72%
+  );
+  transition: opacity var(--d-slow) var(--ease-out);
+}
+body.has-ambient .np-inner::before { opacity: 1; }
+.np-inner > * { position: relative; }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-inner::before { transition: none; }
+}
+
 /* ─ Artwork / embedded video stage ─ */
 .np-stage {
   position: relative;
@@ -54,6 +82,12 @@
   inline-size: min(72vw, 320px);
   aspect-ratio: 1;
   margin-block: var(--s-2);
+}
+/* <picture> is inline by default, which would collapse the stage sizing. */
+.np-pic {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
 }
 .np-art {
   inline-size: 100%;
@@ -78,7 +112,7 @@
   block-size: 100%;
 }
 .yt-frame iframe { border: 0; display: block; }
-.np-player.yt-mode .np-art { display: none; }
+.np-player.yt-mode .np-pic { display: none; }
 .np-player.yt-mode .yt-frame { display: block; }
 /* Artless feed (and no embedded video): drop the empty stage entirely. */
 .np-player.no-art:not(.yt-mode) .np-stage { display: none; }
@@ -188,6 +222,44 @@
 .np-sel { min-block-size: 40px; }
 .np-sel.active { color: var(--accent); border-color: var(--accent); }
 
+/* ─ Sleep timer: live countdown + extend ─
+   With a countdown and a +5 button the sleep group is four items wide, which
+   collides with the speed control on a phone. Give it its own row until there
+   is room, and never let its own children wrap against each other. */
+.np-sleep {
+  gap: var(--s-1);
+  flex-wrap: nowrap;
+  flex-basis: 100%;
+  justify-content: center;
+}
+@media (min-width: 560px) {
+  .np-sleep { flex-basis: auto; }
+}
+.np-sleep .np-sel { min-inline-size: 0; }
+.np-sleep-left {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  min-inline-size: 5ch;
+  text-align: center;
+}
+.np-sleep-plus {
+  min-block-size: 28px;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background var(--d-fast) var(--ease-out), border-color var(--d-fast) var(--ease-out);
+}
+.np-sleep-plus:hover { background: var(--accent-soft); border-color: var(--accent); }
+.np-sleep-plus:active { transform: scale(0.96); }
+
 .np-queue { position: relative; color: var(--text2); }
 .np-queue:hover { color: var(--text); }
 .np-queue.has-queue { color: var(--accent); }
@@ -211,6 +283,60 @@
   transition: opacity var(--d-fast) var(--ease-out), transform var(--d-fast) var(--ease-spring);
 }
 .np-queue.has-queue .np-queue-badge { opacity: 1; transform: none; }
+
+/* ─ Show notes (text + safe links only — see feeds/show-notes.ts) ─ */
+.np-notes {
+  border-block-start: 1px solid var(--border);
+  padding-block-start: var(--s-3);
+}
+.np-notes[hidden] { display: none; }
+.np-notes-toggle {
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text3);
+  min-block-size: 32px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.np-notes-toggle::-webkit-details-marker { display: none; }
+.np-notes-toggle::before {
+  content: '';
+  inline-size: 0;
+  block-size: 0;
+  border-inline-start: 5px solid currentColor;
+  border-block-start: 4px solid transparent;
+  border-block-end: 4px solid transparent;
+  transition: transform var(--d-fast) var(--ease-out);
+}
+.np-notes[open] .np-notes-toggle::before { transform: rotate(90deg); }
+.np-notes-toggle:hover { color: var(--text2); }
+.np-notes-body {
+  max-block-size: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-block-start: var(--s-3);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text2);
+}
+.np-note-p { margin-block-end: var(--s-3); }
+.np-note-links {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+  padding-inline-start: var(--s-4);
+}
+.np-note-link { color: var(--accent); text-decoration: underline; overflow-wrap: anywhere; }
+.np-note-link:hover { color: var(--accent-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-notes-toggle::before { transition: none; }
+}
 
 /* ─ Desktop: two columns inside the floating panel ─ */
 @media (min-width: 900px) {

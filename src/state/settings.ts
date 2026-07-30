@@ -20,6 +20,8 @@ export interface Settings {
   showDl: boolean;
   accentColor: string;
   lang: LangCode;
+  /** Tint the Now Playing background with a colour sampled from the artwork. */
+  ambientArt: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showDl: true,
   accentColor: '#f2a33c',
   lang: 'tr',
+  ambientArt: true,
 };
 
 export const settings = signal<Settings>({ ...DEFAULT_SETTINGS });

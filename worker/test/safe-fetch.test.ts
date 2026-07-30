@@ -1,12 +1,84 @@
 import { fetchMock } from 'cloudflare:test';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { fetchWithTimeout } from '../src/safe-fetch';
+import { fetchWithTimeout, isPrivateHost, safeTarget } from '../src/safe-fetch';
 
 beforeAll(() => {
   fetchMock.activate();
   fetchMock.disableNetConnect();
 });
 afterEach(() => fetchMock.assertNoPendingInterceptors());
+
+describe('isPrivateHost', () => {
+  // These four passed the old regex. IPv4-mapped IPv6 is the dangerous one:
+  // the URL parser rewrites ::ffff:127.0.0.1 to ::ffff:7f00:1, which no longer
+  // looks like loopback to a textual match.
+  it.each([
+    ['[::ffff:127.0.0.1]', 'IPv4-mapped loopback'],
+    ['[::ffff:7f00:1]', 'IPv4-mapped loopback, normalized'],
+    ['[::ffff:169.254.169.254]', 'IPv4-mapped cloud metadata'],
+    ['[::ffff:a9fe:a9fe]', 'IPv4-mapped cloud metadata, normalized'],
+    ['[::]', 'unspecified address'],
+    ['100.64.1.1', 'CGNAT 100.64/10'],
+    ['100.127.255.255', 'CGNAT upper bound'],
+  ])('blocks %s (%s)', (host) => {
+    expect(isPrivateHost(host)).toBe(true);
+  });
+
+  it.each([
+    ['localhost'],
+    ['foo.internal'],
+    ['printer.local'],
+    ['127.0.0.1'],
+    ['10.0.0.1'],
+    ['192.168.1.1'],
+    ['169.254.169.254'],
+    ['172.16.0.1'],
+    ['172.31.255.255'],
+    ['0.0.0.0'],
+    ['[::1]'],
+    ['[fc00::1]'],
+    ['[fd12:3456::1]'],
+    ['[fe80::1]'],
+    ['[64:ff9b::7f00:1]'],
+    ['224.0.0.1'],
+  ])('keeps blocking %s', (host) => {
+    expect(isPrivateHost(host)).toBe(true);
+  });
+
+  it.each([
+    ['example.com'],
+    ['8.8.8.8'],
+    ['1.1.1.1'],
+    ['100.63.255.255'],
+    ['100.128.0.1'],
+    ['172.15.0.1'],
+    ['172.32.0.1'],
+    ['[2606:4700::1111]'],
+    ['feeds.megaphone.fm'],
+    ['localhost.example.com'],
+  ])('allows public host %s', (host) => {
+    expect(isPrivateHost(host)).toBe(false);
+  });
+});
+
+describe('safeTarget', () => {
+  it('rejects the bypasses through the public entry point', () => {
+    expect(safeTarget('http://[::ffff:169.254.169.254]/latest/meta-data/')).toBeNull();
+    expect(safeTarget('http://100.64.1.1/')).toBeNull();
+    expect(safeTarget('http://[::]/')).toBeNull();
+  });
+
+  it('still rejects non-http schemes and embedded credentials', () => {
+    expect(safeTarget('file:///etc/passwd')).toBeNull();
+    expect(safeTarget('gopher://example.com/')).toBeNull();
+    expect(safeTarget('https://user:pass@example.com/')).toBeNull();
+    expect(safeTarget(undefined)).toBeNull();
+  });
+
+  it('accepts an ordinary feed url', () => {
+    expect(safeTarget('https://feeds.simplecast.com/abc')?.hostname).toBe('feeds.simplecast.com');
+  });
+});
 
 describe('fetchWithTimeout redirect handling', () => {
   it('rejects a 302 that points at a private target', async () => {

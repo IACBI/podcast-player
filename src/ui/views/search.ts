@@ -13,7 +13,7 @@ import { ytServiceSearch, type YtSearchItem } from '../../youtube/piped';
 import { fmtDur } from '../../lib/format';
 import { parseDirectInput } from '../../feeds/input-parse';
 import { t } from '../../i18n';
-import { httpsOnly } from '../../lib/safe';
+import { artTile, ROW_ART_PX } from '../art-tile';
 import { h } from '../h';
 import { stateBox } from '../states';
 import { must } from '../shell';
@@ -52,18 +52,7 @@ export function initSearchView(deps: SearchViewDeps): SearchView {
 
   /** Artwork img with a calm placeholder fallback (missing art / dead CDN). */
   function rowArt(art: string): HTMLElement {
-    const src = httpsOnly(art);
-    if (!src) return h('div', { className: 'row-art' });
-    const img = h('img', {
-      className: 'row-art',
-      src,
-      alt: '',
-      attrs: { loading: 'lazy', decoding: 'async' },
-    });
-    img.addEventListener('error', () => img.replaceWith(h('div', { className: 'row-art' })), {
-      once: true,
-    });
-    return img;
+    return artTile('row-art', art, ROW_ART_PX);
   }
 
   function resultRow(opts: {

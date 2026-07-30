@@ -8,7 +8,7 @@ import type { FeedRequest, Subscription } from '../../feeds/types';
 import { registerView, viewEl, type View } from '../views';
 import { h } from '../h';
 import { t, currentLang } from '../../i18n';
-import { httpsOnly } from '../../lib/safe';
+import { artTile, ROW_ART_PX, SUB_TILE_PX } from '../art-tile';
 import { fmtTime } from '../../lib/format';
 import { BRAND_MARK } from '../icons';
 import { createLangMenu } from '../lang-menu';
@@ -28,9 +28,9 @@ export interface HomeView extends View {
   refresh(): void;
 }
 
-export function initHomeView(deps: HomeViewDeps): HomeView {
-  const el = viewEl('home');
-  el.innerHTML = `
+// Built at module scope from the brand-mark constant, so the innerHTML
+// assignment below is plainly static — no runtime data can reach it.
+const MARKUP = `
     <div class="view-inner home">
       <header class="home-brand">
         <div class="home-brand-id">
@@ -44,6 +44,10 @@ export function initHomeView(deps: HomeViewDeps): HomeView {
       </header>
       <div class="home-sections"></div>
     </div>`;
+
+export function initHomeView(deps: HomeViewDeps): HomeView {
+  const el = viewEl('home');
+  el.innerHTML = MARKUP;
 
   el.querySelector('.home-lang')?.append(createLangMenu({ compact: true }));
 
@@ -65,23 +69,12 @@ export function initHomeView(deps: HomeViewDeps): HomeView {
     return h('div', { className: 'search-hint', dataset: { i18n: key } }, t(key));
   }
 
-  /** Artwork img, or a calm placeholder tile when the feed has no art. */
-  function artOrTile(className: string, art: string): HTMLElement {
-    const src = httpsOnly(art);
-    if (!src) return h('div', { className });
-    return h('img', {
-      className,
-      src,
-      alt: '',
-      attrs: { loading: 'lazy', decoding: 'async' },
-    });
-  }
 
   function continueRow(item: ContinueItem): HTMLElement {
     const row = h(
       'div',
       { className: 'row home-row', role: 'button', tabIndex: 0, dataset: { homeRow: '1' } },
-      artOrTile('row-art', item.episode.art || item.feed.art),
+      artTile('row-art', item.episode.art || item.feed.art, ROW_ART_PX),
       h(
         'div',
         { className: 'row-info' },
@@ -112,7 +105,7 @@ export function initHomeView(deps: HomeViewDeps): HomeView {
         dataset: { homeRow: '1' },
         title: sub.name || sub.artist || '',
       },
-      artOrTile('home-sub-art', sub.art),
+      artTile('home-sub-art', sub.art, SUB_TILE_PX),
       h('div', { className: 'home-sub-name' }, sub.name || sub.artist || '—'),
     );
     activate(tile, () => deps.openFeed(req));

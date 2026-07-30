@@ -1,5 +1,7 @@
 import { applyLang, t } from './i18n';
 import { initMediaSession } from './player/media-session';
+import { initSleepTimer } from './player/sleep-timer';
+import { initShortcuts } from './ui/shortcuts';
 import { requestPersistence } from './player/offline';
 import { pbCurrent, pbDuration, pbSeekTo } from './player/engine';
 import { loadProgress, saveProgressNow, setQuotaListener } from './storage/progress';
@@ -109,6 +111,10 @@ export function boot(): void {
   initNav({ go: goView });
 
   initMiniPlayer({ playback, onOpen: () => nowPlayingSheet.open() });
+  // Restores a timer that survived a reload; both surfaces already render from
+  // the sleep signal by this point.
+  initSleepTimer(() => toast(t('sleep_done')));
+  initShortcuts();
 
   // ── media session ────────────────────────────────────────────────
   initMediaSession({

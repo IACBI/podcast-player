@@ -47,21 +47,47 @@ export function parseRss(xmlText: string): ParsedRss {
 
   const episodes: Episode[] = [];
   for (const item of channel.querySelectorAll('item')) {
+    // One pass over the children: feeds routinely carry thousands of items, so
+    // this loop is the hot path of a full-archive parse.
     let encUrl = '';
-    for (const el of item.children) {
-      if (el.localName === 'enclosure') encUrl = el.getAttribute('url') || '';
-    }
-    if (!/^https:\/\//i.test(encUrl)) continue;
     let durMs = 0;
+    let epArt = '';
+    let notes = '';
+    let summary = '';
     for (const el of item.children) {
-      if (el.localName === 'duration') durMs = parseDuration(el.textContent?.trim() ?? '');
+      switch (el.localName) {
+        case 'enclosure':
+          encUrl = el.getAttribute('url') || '';
+          break;
+        case 'duration':
+          durMs = parseDuration(el.textContent?.trim() ?? '');
+          break;
+        case 'image':
+          epArt = el.getAttribute('href') || childText(el, 'url') || epArt;
+          break;
+        // `content:encoded` is the richest when present; description and
+        // itunes:summary are the common fallbacks.
+        case 'encoded':
+          notes = el.textContent?.trim() ?? notes;
+          break;
+        case 'description':
+          summary = summary || (el.textContent?.trim() ?? '');
+          break;
+        case 'summary':
+          summary = summary || (el.textContent?.trim() ?? '');
+          break;
+      }
     }
+    const description = notes || summary;
+    if (!/^https:\/\//i.test(encUrl)) continue;
     episodes.push({
       trackId: childText(item, 'guid') || encUrl,
       trackName: childText(item, 'title'),
       releaseDate: childText(item, 'pubDate'),
       episodeUrl: encUrl,
       trackTimeMillis: durMs,
+      ...(epArt ? { art: epArt } : {}),
+      ...(description ? { description } : {}),
     });
   }
 

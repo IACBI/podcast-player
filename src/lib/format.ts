@@ -1,24 +1,44 @@
 import { t, currentLang } from '../i18n';
 
 const dateCache = new Map<string, string>();
+let dateFormat: Intl.DateTimeFormat | null = null;
 
-// Locale-formatted dates change with the language — drop the cache on switch.
-currentLang.subscribe(() => dateCache.clear());
+// Locale-formatted dates change with the language — drop both on switch.
+currentLang.subscribe(() => {
+  dateCache.clear();
+  dateFormat = null;
+});
+
+/**
+ * `toLocaleDateString` builds a formatter on every call, which is the real cost
+ * when rendering a full archive. Build it once per language instead.
+ */
+function formatter(): Intl.DateTimeFormat {
+  dateFormat ??= new Intl.DateTimeFormat(currentLang(), {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+  return dateFormat;
+}
+
+/**
+ * Cap is generous and overflow clears the whole map. A feed's archive has one
+ * distinct pubDate per episode, so the old 500-entry FIFO evicted exactly the
+ * entries the same render still needed — a near-100% miss rate on the feeds
+ * where caching mattered most.
+ */
+const DATE_CACHE_MAX = 4000;
 
 export function fmtDate(s: string): string {
   if (!s) return '';
   const hit = dateCache.get(s);
   if (hit !== undefined) return hit;
   try {
-    const r = new Date(s).toLocaleDateString(currentLang(), {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-    if (dateCache.size >= 500) {
-      const first = dateCache.keys().next().value;
-      if (first !== undefined) dateCache.delete(first);
-    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return '';
+    const r = formatter().format(d);
+    if (dateCache.size >= DATE_CACHE_MAX) dateCache.clear();
     dateCache.set(s, r);
     return r;
   } catch {
