@@ -99,9 +99,10 @@ gh release create v4.1.26 \
   (`tauri.conf.json` → `version` artır, yeniden `tauri build`, yeni release).
 - İkonlar `npx tauri icon ../public/icons/icon-512.png` ile "sinyal"
   markasından (beş çubuklu frekans işareti) yeniden üretilir; kaynak PNG'ler
-  `node scripts/icons.cjs` ile `public/icons/seseri.svg`'den çıkar. Not:
-  4.0'ta marka S-monogramından sinyal işaretine geçti — bir sonraki masaüstü
-  sürümünde `tauri icon` adımı yeniden koşulmalı.
+  `node scripts/icons.cjs` ile `public/icons/seseri.svg`'den çıkar. Kurulum
+  ikonları 4.0'taki marka değişiminden (S-monogramı → sinyal işareti) sonra
+  yeniden üretildi; `tauri icon` adımı yalnızca marka görseli tekrar
+  değişirse gerekir.
 
 ---
 
@@ -117,11 +118,21 @@ gh release create v4.1.26 \
      (kaybedersen güncelleme yayınlayamazsın).
 3. Zip'ten çıkanlar: `app-release-bundle.aab` (Play'e yüklenecek),
    `assetlinks.json` (SHA-256 parmak izi içerir).
-4. **Digital Asset Links:** PWABuilder'ın verdiği `assetlinks.json` içeriğini
-   `public/.well-known/assetlinks.json` dosyasındaki
-   `REPLACE_WITH_SHA256_FROM_PWABUILDER` alanına işle → yeniden build + deploy.
-   Doğrula: `https://iacbi.github.io/seseri/.well-known/assetlinks.json`
-   parmak izini gösteriyor. *(Bu olmadan uygulama tarayıcı çubuğuyla açılır.)*
+4. **Digital Asset Links — dikkat, bu repo'dan yayınlanamaz.** Android bu
+   dosyayı **yalnızca origin kökünden** okur:
+   `https://iacbi.github.io/.well-known/assetlinks.json`. Uygulama ise
+   `/seseri/` alt yolunda yayınlanıyor, dolayısıyla dosyayı bu repo'ya koymak
+   işe yaramaz — bu yüzden buradaki eski `public/.well-known/assetlinks.json`
+   şablonu (hiç doldurulmamış bir yer tutucu içeriyordu) kaldırıldı.
+
+   PWABuilder'ın verdiği `assetlinks.json` içeriğini **`iacbi.github.io`
+   kullanıcı sitesi repo'suna** (`IACBI/iacbi.github.io`) `.well-known/`
+   altına koy ve oradan yayınla. Doğrula:
+   `https://iacbi.github.io/.well-known/assetlinks.json` parmak izini
+   gösteriyor. *(Bu olmadan uygulama tarayıcı adres çubuğuyla açılır.)*
+
+   Alternatif: uygulamayı kendi alan adına taşıyıp dosyayı o alan adının
+   kökünden yayınlamak.
 5. Play Console: https://play.google.com/console → **Create app** →
    ad `Seseri`, App (game değil), Free.
 6. **Testing → Internal testing → Create release** → `.aab` dosyasını yükle →
@@ -187,11 +198,12 @@ Bu adımlar tamamlanana kadar iOS desteği "Safari PWA" olarak belgelenir.
 
 ## Sürüm kontrol listesi
 
-- [ ] `npm run verify` yeşil (lint, tsc, 121 istemci + 26 worker birim testi, build)
+- [ ] `npm run verify` yeşil (lint, tsc, 186 istemci + 67 worker birim testi, build)
 - [ ] `v*` tag'i push edilince `.github/workflows/desktop.yml` NSIS
       kurulumunu taslak Release olarak üretir (imzasız — SmartScreen uyarısı)
 - [ ] `node scripts/smoke-p3-offline.cjs` ve `smoke-p5-mini.cjs` yeşil
 - [ ] Worker deploy + `VITE_API_BASE` prod build'e gömülü
 - [ ] CSP `connect-src` Worker adresini içeriyor
 - [ ] Canlıda: arama, RSS, indirme→uçak modu, tema/dil değişimi
-- [ ] `assetlinks.json` gerçek parmak iziyle canlıda (Play için)
+- [ ] `assetlinks.json` gerçek parmak iziyle **origin kökünde** canlıda
+      (`iacbi.github.io/.well-known/`, bu repo'da değil — yalnızca Play için)
