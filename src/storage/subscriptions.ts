@@ -29,3 +29,26 @@ export function toggleSubscription(meta: Subscription): void {
 export function removeSubscription(id: string): void {
   persist(subscriptions().filter((f) => String(f.id) !== String(id)));
 }
+
+/**
+ * Fill in artwork/author for a subscription that was stored without them.
+ * OPML carries only a title and a URL, so an imported subscription sat in the
+ * Library as a nameless grey tile until the user opened it — and even then
+ * nothing wrote the metadata back.
+ */
+export function refreshSubscription(meta: Subscription): void {
+  const list = subscriptions();
+  const i = list.findIndex((f) => String(f.id) === String(meta.id));
+  const cur = list[i];
+  if (!cur) return;
+  const next: Subscription = {
+    ...cur,
+    name: cur.name || meta.name,
+    artist: cur.artist || meta.artist,
+    art: cur.art || meta.art,
+  };
+  if (next.name === cur.name && next.artist === cur.artist && next.art === cur.art) return;
+  const updated = list.slice();
+  updated[i] = next;
+  persist(updated);
+}

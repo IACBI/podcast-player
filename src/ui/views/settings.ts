@@ -11,6 +11,7 @@
 import { t } from '../../i18n';
 import { createLangMenu } from '../lang-menu';
 import { clearAllDownloads, storageInfo } from '../../player/offline';
+import { clearFeedCache } from '../../storage/db';
 import { clearProgress, saveProgressNow } from '../../storage/progress';
 import { local } from '../../storage/local';
 import { exportOpml, parseOpml } from '../../storage/opml';
@@ -162,6 +163,20 @@ const MARKUP = `
   </section>
 
   <section class="s-section">
+    <div class="s-section-title" data-i18n="s_privacy">Gizlilik</div>
+    <div class="s-row">
+      <div>
+        <div class="s-label" data-i18n="s_allow_proxies">Üçüncü taraf vekillerine izin ver</div>
+        <div class="s-sublabel" data-i18n="s_allow_proxies_sub">Seseri sunucusuna ulaşılamadığında yedek yol.</div>
+      </div>
+      <label class="s-toggle">
+        <input type="checkbox" id="s_allowPublicProxies">
+        <span class="s-toggle-track"></span>
+      </label>
+    </div>
+  </section>
+
+  <section class="s-section">
     <div class="s-section-title" data-i18n="s_lang_title">Dil / Language</div>
     <div class="s-row">
       <div><div class="s-label" data-i18n="s_lang_label">Arayüz Dili</div></div>
@@ -179,10 +194,12 @@ const MARKUP = `
       <button class="s-btn" id="btnOpmlExport" data-i18n="btn_opml_export">OPML Dışa Aktar</button>
       <button class="s-btn" id="btnOpmlImport" data-i18n="btn_opml_import">OPML İçe Aktar</button>
       <button class="s-btn" id="btnJsonExport" data-i18n="btn_json_export">JSON Yedeği İndir</button>
+      <button class="s-btn" id="btnJsonImport" data-i18n="btn_json_import">JSON Yedeğini Geri Yükle</button>
       <button class="s-btn danger" id="btnClearDownloads" data-i18n="btn_clear_downloads">🗑 İndirilenleri Sil</button>
       <button class="s-btn danger" id="btnClearProgress" data-i18n="btn_clear_progress">🗑 Tüm İlerlemeyi Sıfırla</button>
       <button class="s-btn danger" id="btnClearAll" data-i18n="btn_clear_all">🗑 Tüm Verileri Temizle</button>
       <input type="file" id="opmlFile" accept=".opml,.xml,text/xml,application/xml" hidden>
+      <input type="file" id="jsonFile" accept=".json,application/json" hidden>
     </div>
   </section>
 </div>`;
@@ -208,6 +225,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   const sAmbient = pick<HTMLInputElement>('s_ambientArt');
   const sSort = pick<HTMLSelectElement>('s_defaultSort');
   const sShowDl = pick<HTMLInputElement>('s_showDl');
+  const sProxies = pick<HTMLInputElement>('s_allowPublicProxies');
   // Language: the shared flag listbox (native <option> can't render flags)
   pick<HTMLDivElement>('s_lang').append(createLangMenu());
   const swatchWrap = pick<HTMLDivElement>('colorSwatches');
@@ -258,6 +276,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
     sTheme.value = S.theme;
     sSort.value = S.defaultSort;
     sShowDl.checked = S.showDl;
+    sProxies.checked = S.allowPublicProxies;
     updateSwatchActive();
   }
 
@@ -298,6 +317,9 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   });
   sSort.addEventListener('change', () => setSetting('defaultSort', sSort.value as SortDir));
   sShowDl.addEventListener('change', () => setSetting('showDl', sShowDl.checked));
+  sProxies.addEventListener('change', () =>
+    setSetting('allowPublicProxies', sProxies.checked),
+  );
 
   // ── data section ─────────────────────────────────────────────────
   function saveFile(name: string, mime: string, content: string): void {
@@ -338,13 +360,60 @@ export function initSettingsView(deps: SettingsViewDeps): View {
     });
   });
 
+  /** Keys the backup round-trips. The queue joined them when it gained its own store. */
+  const BACKUP_KEYS = ['pp_settings', 'pp_favs', 'pp_prog', 'pp_queue'] as const;
+
   pick('btnJsonExport').addEventListener('click', () => {
     const dump: Record<string, unknown> = { exportedAt: new Date().toISOString() };
-    for (const key of ['pp_settings', 'pp_favs', 'pp_prog']) {
-      dump[key] = local.get(key, null);
-    }
+    for (const key of BACKUP_KEYS) dump[key] = local.get(key, null);
     saveFile('seseri-backup.json', 'application/json', JSON.stringify(dump, null, 2));
     toast(t('toast_json_exported'));
+  });
+
+  /**
+   * Restore a backup. There was an export button and no import, which makes the
+   * export not a backup at all — nothing could ever be recovered from it.
+   *
+   * Written straight to the same localStorage keys and then reloaded: every
+   * loader (`loadSettings`, `loadSubscriptions`, `loadProgress`, `loadQueue`)
+   * already validates its own shape on the way in, so a hand-edited file is
+   * rejected field by field rather than trusted here.
+   */
+  function restoreBackup(text: string): boolean {
+    let data: unknown;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return false;
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+    const dump = data as Record<string, unknown>;
+    // A file with none of the keys is somebody else's JSON, not a backup.
+    if (!BACKUP_KEYS.some((k) => dump[k] !== undefined && dump[k] !== null)) return false;
+    for (const key of BACKUP_KEYS) {
+      const value = dump[key];
+      if (value === undefined || value === null) continue;
+      local.set(key, value);
+    }
+    return true;
+  }
+
+  const jsonFile = pick<HTMLInputElement>('jsonFile');
+  pick('btnJsonImport').addEventListener('click', () => jsonFile.click());
+  jsonFile.addEventListener('change', () => {
+    const f = jsonFile.files?.[0];
+    jsonFile.value = '';
+    if (!f) return;
+    void f.text().then((text) => {
+      if (!restoreBackup(text)) {
+        toast(t('json_invalid'), 'error');
+        return;
+      }
+      toast(t('json_imported'));
+      // Reload rather than re-deriving every signal by hand: the loaders run
+      // once at boot and are the only place the stored shapes are validated.
+      location.reload();
+    });
   });
 
   pick('btnClearDownloads').addEventListener('click', () => {
@@ -366,9 +435,15 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   });
 
   pick('btnClearAll').addEventListener('click', () => {
-    void confirmDialog('confirm_clear_all').then((ok) => {
+    void confirmDialog('confirm_clear_all').then(async (ok) => {
       if (!ok) return;
       saveProgressNow();
+      // localStorage alone left the bulk of the data in place: the IndexedDB
+      // feed/resume/download stores and, worst of all, the `seseri-audio`
+      // Cache API bucket holding every downloaded episode — potentially
+      // gigabytes that "clear all data" silently kept.
+      await clearAllDownloads();
+      await clearFeedCache();
       local.clear();
       location.reload();
     });

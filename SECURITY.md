@@ -14,12 +14,20 @@ You can expect an initial response within a week.
 - **Client:** no accounts, no cookies — settings/progress live in
   `localStorage`, feed cache and download metadata in IndexedDB, downloaded
   audio in the Cache API. External requests go to `itunes.apple.com`, the
-  optional Seseri Worker, public CORS proxies (allorigins/codetabs/corsproxy),
-  Piped/Invidious instances, Google Fonts, and podcast hosts' own CDNs. A
-  strict Content Security Policy (no `'unsafe-inline'` scripts) is declared in
-  `index.html`; remote data is only inserted through a typed DOM builder.
-- **Worker (`worker/`):** a stateless proxy on Cloudflare. It enforces an
-  SSRF guard on user-supplied URLs (re-validated on every redirect hop —
+  optional Seseri Worker, Piped/Invidious instances (listing only), Google
+  Fonts, and podcast hosts' own CDNs. The public CORS proxies
+  (allorigins/codetabs/corsproxy) are **opt-in and off by default** — see
+  below. A strict Content Security Policy (no `'unsafe-inline'` scripts, no
+  frames at all) is declared in `index.html`; remote data is only inserted
+  through a typed DOM builder. Values restored from `localStorage` are
+  validated against an allow-list before reaching CSS custom properties or the
+  media element.
+- **Worker (`worker/`):** a stateless proxy on Cloudflare. Feeds whose URL
+  carries a subscriber credential are served with `Cache-Control: no-store` and
+  never written to the shared edge cache. The YouTube audio proxy is rate
+  limited per IP regardless of the `Range` header, and answers a ranged request
+  with at most 16 MB so one request cannot exhaust the subrequest budget. It
+  enforces an SSRF guard on user-supplied URLs (re-validated on every redirect hop —
   redirects are followed manually, max 3 hops, and each `Location` target must
   pass the same private-host checks), response size caps, an app-origin
   requirement so the proxy endpoints cannot be used as an open proxy, and
@@ -51,9 +59,20 @@ You can expect an initial response within a week.
   specification, and GitHub Pages cannot set response headers. The app is
   therefore framable by other origins. Putting the Worker (or any host that can
   set headers) in front of the site is the only fix.
-- Public CORS proxies see the URL of every *public* feed the user opens. This is
-  inherent to fetching feeds that send no CORS headers from a static site;
-  configuring the Worker removes the third parties from the path.
+- Public CORS proxies, **when the user turns them on**, see the URL of every
+  *public* feed opened, and the app races three of them and parses whichever
+  answers first — so any one of them can alter the XML, enclosure URLs
+  included. They are off by default and exist only as a fallback for when the
+  Worker is unreachable; configuring the Worker removes the third parties from
+  the path entirely.
+- Piped and Invidious are no longer contacted at all. Every listing endpoint
+  they expose was measured dead as well (502/403 from this machine and from
+  Cloudflare), so YouTube listing, search and audio now all come from the
+  Worker's own Innertube session and twelve upstream origins left both CSPs.
+- YouTube videos with no resolvable audio stream cannot be played at all. This
+  is deliberate: the previous `youtube-nocookie` iframe fallback played ads and
+  stopped when the screen locked, which is the opposite of what the app
+  promises. Run `node scripts/yt-resolve-rate.cjs` to measure the current rate.
 
 Reports about XSS via podcast/RSS metadata, CSP bypasses, Service Worker
 cache poisoning, or Worker SSRF/validation gaps are especially appreciated.

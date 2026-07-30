@@ -31,11 +31,16 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 
 ## 4. YouTube
 
-- [ ] Tek video linki yapıştır → ses olarak çalar (Piped) ya da embed fallback devreye girer.
-- [ ] Playlist linki yapıştır → tüm liste bölüm olarak gelir, başlıklar dolu.
-- [ ] Kanal linki yapıştır → videolar listelenir.
-- [ ] Piped ölüyse embed fallback'te oynatma kontrolleri (play/pause/seek) çalışır.
-- [ ] YouTube bölümü için tarih bilgisi görünür.
+- [ ] Tek video linki yapıştır → Worker `<audio>` akışı olarak çalar. Ses çözülemezse
+      **oynatılamıyor** mesajı görünür (iframe yedeği yoktur — reklam çalar ve ekran
+      kilitlenince susardı).
+- [ ] Playlist linki yapıştır → liste bölüm olarak gelir, başlıklar ve süreler dolu.
+- [ ] Kanal linki yapıştır → 15'ten çok daha fazla video listelenir (Worker Innertube ile
+      sayfalar; ölçüm: ortalama ~150 bölüm).
+- [ ] Worker kanalın sonuna ulaşamazsa durum satırında **"daha eski bölümler yüklenemedi"**
+      yazar; hiç ulaşamazsa Atom yedeğiyle son ~15 bölüm gelir (aynı not ile).
+- [ ] En yeni bölümlerde tarih görünür (Atom feed'inden birleştirilir); daha eskilerde
+      tarih boştur — YouTube yalnızca "1 hour ago" gibi göreli metin verir, uydurulmaz.
 
 ## 5. Abonelikler (favoriler)
 
@@ -111,7 +116,9 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] Panelin kapat düğmesi ve Esc ikisi de paneli kapatır, odak tetikleyici elemana döner.
 - [ ] **Kuyruk** görünümü (sekme çubuğu/kenar çubuğunda yok — Şimdi Çalıyor panelinden veya `?view=queue` ile açılır): sıralı liste, yukarı/aşağı taşı, kaldır, tümünü temizle çalışır.
 - [ ] Satırdaki kuyruk düğmesi → sıra numarası rozeti; bölüm bitince **kuyruk her zaman auto-next'ten önce gelir** (kuyrukta bölüm varsa auto-next ayarı ne olursa olsun kuyruktaki çalar).
-- [ ] Farklı feed açınca kuyruk sıfırlanır.
+- [ ] **Farklı feed açınca kuyruk korunur** ve sayfa yenilendikten sonra da durur (`pp_queue`).
+- [ ] Kuyruk satırları hangi podcast'ten geldiğini gösterir; başka bir feed'in bölümü
+      sıradaysa bölüm bitince o feed yüklenip çalınır.
 
 ## 15. Masaüstü düzeni & tema
 
@@ -157,10 +164,13 @@ Her kaynak × eylem kombinasyonu en az bir kez denenir; ✓/✗ olarak işaretle
 
 Notlar:
 - **Kuyruk auto-next'i ezer**: bir bölüm kuyruğa eklenmişken çalınan bölüm biterse, auto-next ayarı açık/kapalı fark etmeksizin kuyruktaki bölüm çalar (`playback-controller.ts` — `dequeueNext` her zaman `autoNext` kontrolünden önce denenir).
-- **Çevrimdışı indir+çal**: DevTools → Network → Offline ile denenir; indirilen bölüm hem çalar hem seek eder. YouTube'da embed fallback'e düşen bölümler indirilemez (yalnızca Worker/Piped üzerinden çözümlenen ses indirilebilir) — bu durum ayrı satırda "N/A" olarak işaretlenebilir.
+- **Çevrimdışı indir+çal**: DevTools → Network → Offline ile denenir; indirilen bölüm hem çalar hem seek eder. Sesi çözülemeyen YouTube videoları indirilemez — bu durum ayrı satırda "N/A" olarak işaretlenebilir.
 - **Medya tuşları**: kilit ekranı/bildirim paneli play/pause/next/prev; başlık+kapak görünür.
 - **Mini transport**: mini dock üzerinde geri/ileri sarma + oynat/duraklat (≥640px'te önceki/sonraki ortada; uyku zamanlayıcısı + hız sağ kümede, panel seçicileriyle senkron); alt ilerleme çizgisi dokun/sürükle ile sarar. Başlık alanı veya genişletme oku (Enter/Space dahil) yeni bölüm başlatmadan Şimdi Çalıyor panelini açar.
-- **Embed→ses kurtarma**: iframe fallback ile başlayan YouTube bölümünde uygulama arka planda ses çözümlemeyi yeniden dener ve akış çözüldüğünde aynı konumdan `<audio>`'ya kesintisiz geçer (kilit ekranı çalması + medya tuşları geri gelir).
+- **Oynatma gezinmeden bağımsız**: bir bölüm çalarken başka bir podcast açmak (daha önce
+  dinlenmiş olan dahil) sesi kesmez, kuyruğu silmez; ileri/geri **çalan** feed'de yürür.
+- **Üçüncü taraf vekiller**: Ayarlar → Gizlilik'te varsayılan kapalı. Kapalıyken Worker'a
+  ulaşılamazsa feed açılışı net bir mesajla başarısız olur (sessizce üçüncü tarafa gitmez).
 
 ### Yeni gezinme kontrolleri
 

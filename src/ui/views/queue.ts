@@ -2,20 +2,19 @@
  * Queue view — the visible face of the up-next queue: ordered rows with
  * keyboard-friendly move/remove controls. Ported from the retired dropdown
  * panel (`ed59840:src/ui/queue-panel.ts`) into a full page view.
+ *
+ * Rows render from the queue entries themselves (title + feed name captured at
+ * enqueue time) rather than looking titles up in the loaded feed: the queue
+ * spans feeds now, so most entries do not belong to whatever is on screen.
  */
 
-import { clearQueue, moveInQueue, queue, removeFromQueue } from '../../state/queue';
+import { clearQueue, moveInQueue, queue, removeFromQueue, type QueueItem } from '../../state/queue';
 import { effect } from '../../state/signals';
 import { t, currentLang } from '../../i18n';
-import type { PlaybackController } from '../playback-controller';
 import { registerView, viewEl, type View } from '../views';
 import { h, icon } from '../h';
 
-export interface QueueViewDeps {
-  playback: PlaybackController;
-}
-
-export function initQueueView(deps: QueueViewDeps): View {
+export function initQueueView(): View {
   const el = viewEl('queue');
   el.innerHTML = `
     <div class="view-inner queue-inner">
@@ -37,27 +36,31 @@ export function initQueueView(deps: QueueViewDeps): View {
     return b;
   }
 
+  function row(item: QueueItem, i: number): HTMLElement {
+    const title = item.title || t('ep_fallback', i + 1);
+    return h(
+      'div',
+      { className: 'queue-row', attrs: { role: 'listitem' } },
+      h('span', { className: 'queue-pos' }, String(i + 1)),
+      h(
+        'div',
+        { className: 'queue-info' },
+        h('span', { className: 'queue-name', title }, title),
+        item.feedName ? h('span', { className: 'queue-feed' }, item.feedName) : null,
+      ),
+      iconBtn(t('queue_move_up'), 'ic-up', () => moveInQueue(item, -1)),
+      iconBtn(t('queue_move_down'), 'ic-down', () => moveInQueue(item, 1)),
+      iconBtn(t('queue_remove'), 'ic-x', () => removeFromQueue(item)),
+    );
+  }
+
   function render(): void {
     const q = queue();
     clearBtn.textContent = t('queue_clear');
     clearBtn.hidden = q.length === 0;
     emptyEl.textContent = t('queue_empty');
     emptyEl.hidden = q.length !== 0;
-
-    listEl.replaceChildren(
-      ...q.map((id, i) => {
-        const title = deps.playback.episodeTitle(id);
-        return h(
-          'div',
-          { className: 'queue-row', attrs: { role: 'listitem' } },
-          h('span', { className: 'queue-pos' }, String(i + 1)),
-          h('span', { className: 'queue-name', title }, title),
-          iconBtn(t('queue_move_up'), 'ic-up', () => moveInQueue(id, -1)),
-          iconBtn(t('queue_move_down'), 'ic-down', () => moveInQueue(id, 1)),
-          iconBtn(t('queue_remove'), 'ic-x', () => removeFromQueue(id)),
-        );
-      }),
-    );
+    listEl.replaceChildren(...q.map(row));
   }
 
   // Reactive: re-render on queue mutation and on language change.

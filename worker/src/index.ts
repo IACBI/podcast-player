@@ -4,18 +4,22 @@
  *   GET /v1/feed?url=      RSS/Atom proxy (text, ≤5 MB, edge-cached 15 min)
  *   GET /v1/itunes?url=    iTunes search/lookup proxy (JSON, edge-cached 1 h)
  *   GET /v1/yt/list        ?type=playlist|channel&id= → YtListing JSON
- *   GET /v1/yt/resolve     ?id=<videoId> → { audioUrl }
+ *   GET /v1/yt/resolve     ?id=<videoId> → { audioUrl } (our own proxy URL)
+ *   GET /v1/yt/audio       ?id=<videoId> → range-proxied audio bytes
  *
- * Cross-cutting: CORS allowlist, per-IP KV rate limit, health-checked
- * upstream pool refreshed by cron.
+ * Cross-cutting: CORS allowlist, per-IP KV rate limit. YouTube listing,
+ * search and audio all go through one Innertube session (`innertube.ts`).
  */
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Env } from './env';
+import { carriesCredential } from './credential-url';
 import { edgeCached, fetchWithTimeout, readCapped, safeTarget } from './safe-fetch';
 import { rateLimited } from './ratelimit';
-import { poolSearch, refreshHealth, ytList, ytResolve, type YtKind } from './yt';
-import { tubeAudio, tubeSearch, type TubeAudio } from './innertube';
+import { tubeAudio, tubeList, tubeSearch, type TubeAudio } from './innertube';
+
+/** Which kind of YouTube collection a listing request is for. */
+export type YtKind = 'playlist' | 'channel';
 
 // Popular feeds keep their full archive in the feed — The Daily's RSS alone
 // is ~18 MB — so the cap is generous; it only guards against abuse.
@@ -48,6 +52,18 @@ app.use(
  */
 const AUDIO_STARTS_PER_MIN = 30;
 
+/**
+ * Second, range-blind budget. The stream-start counter above is trivially
+ * bypassed with `Range: bytes=1-`, and this route deliberately has no Origin
+ * check (a media element sends none) — so without this the worker is an
+ * unmetered bandwidth proxy for any YouTube video.
+ *
+ * Deliberately generous: a continuation request arrives roughly every
+ * RESPONSE_CAP bytes, so real playback of even a very long episode stays far
+ * below it, while a scraper pulling files in a loop does not.
+ */
+const AUDIO_REQUESTS_PER_MIN = 120;
+
 const RATE_LIMITED = { error: 'rate limited' } as const;
 
 app.use('*', async (c, next) => {
@@ -57,6 +73,9 @@ app.use('*', async (c, next) => {
     const range = c.req.header('range') ?? '';
     const isStreamStart = !range || /^bytes=0-/.test(range);
     if (isStreamStart && (await rateLimited(c.env.KV, ip, AUDIO_STARTS_PER_MIN, 'rla'))) {
+      return c.json(RATE_LIMITED, 429, { 'retry-after': '60' });
+    }
+    if (await rateLimited(c.env.KV, ip, AUDIO_REQUESTS_PER_MIN, 'rlab')) {
       return c.json(RATE_LIMITED, 429, { 'retry-after': '60' });
     }
     // <audio> issues a no-cors media request and sends no Origin, so the
@@ -85,27 +104,43 @@ app.get('/v1/feed', async (c) => {
   const target = safeTarget(c.req.query('url'));
   if (!target) return c.json({ error: 'invalid url' }, 400);
 
+  const fetchFeed = async (): Promise<Response> => {
+    try {
+      const res = await fetchWithTimeout(target.href, 15000, {
+        headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
+      });
+      if (!res.ok) return c.json({ error: 'upstream ' + res.status }, 502);
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('text/html')) return c.json({ error: 'not a feed' }, 415);
+      const body = await readCapped(res, FEED_MAX_BYTES);
+      return new Response(body, {
+        headers: { 'content-type': ct || 'application/xml; charset=utf-8' },
+      });
+    } catch (e) {
+      const msg = (e as Error).message;
+      return c.json({ error: msg === 'too large' ? 'feed too large' : 'fetch failed' }, msg === 'too large' ? 413 : 502);
+    }
+  };
+
+  /**
+   * Paid feeds carry the listener's own subscriber token in the URL. The client
+   * already refuses to send those to the public proxies and routes them here
+   * instead — but here they were being written into Cloudflare's SHARED edge
+   * cache under `Cache-Control: public` for 15 minutes, which put one
+   * listener's private episodes in a cache entry keyed by a URL they do not
+   * exclusively control. Those responses are now never stored.
+   */
+  if (carriesCredential(target.href)) {
+    const res = await fetchFeed();
+    res.headers.set('cache-control', 'no-store');
+    return res;
+  }
+
   return edgeCached(
     'https://cache.seseri/feed?u=' + encodeURIComponent(target.href),
     15 * 60,
     c.executionCtx,
-    async () => {
-      try {
-        const res = await fetchWithTimeout(target.href, 15000, {
-          headers: { accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' },
-        });
-        if (!res.ok) return c.json({ error: 'upstream ' + res.status }, 502);
-        const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (ct.includes('text/html')) return c.json({ error: 'not a feed' }, 415);
-        const body = await readCapped(res, FEED_MAX_BYTES);
-        return new Response(body, {
-          headers: { 'content-type': ct || 'application/xml; charset=utf-8' },
-        });
-      } catch (e) {
-        const msg = (e as Error).message;
-        return c.json({ error: msg === 'too large' ? 'feed too large' : 'fetch failed' }, msg === 'too large' ? 413 : 502);
-      }
-    },
+    fetchFeed,
   );
 });
 
@@ -133,19 +168,57 @@ app.get('/v1/itunes', async (c) => {
 });
 
 // ── YouTube ─────────────────────────────────────────────────────────
+/**
+ * Absolute upload dates for the newest ~15 items, from YouTube's own Atom feed.
+ *
+ * Innertube's browse response only carries relative text ("1 hour ago"), and
+ * converting that to a timestamp would be inventing precision. The Atom feed
+ * has real ISO dates but only the newest handful of entries, so the two are
+ * merged: full list from Innertube, exact dates where the feed reaches.
+ *
+ * Parsed with a regex rather than a DOM: workerd has no DOMParser, and this is
+ * YouTube's own fixed-shape feed where both tags are unambiguous.
+ */
+async function atomDates(type: YtKind, id: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const url =
+    'https://www.youtube.com/feeds/videos.xml?' +
+    (type === 'playlist' ? 'playlist_id=' : 'channel_id=') +
+    encodeURIComponent(id);
+  try {
+    const res = await fetchWithTimeout(url, 8000);
+    if (!res.ok) return out;
+    const xml = new TextDecoder().decode(await readCapped(res, 2 * 1024 * 1024));
+    for (const entry of xml.split('<entry>').slice(1)) {
+      const vid = /<yt:videoId>([\w-]{11})<\/yt:videoId>/.exec(entry)?.[1];
+      const pub = /<published>([^<]+)<\/published>/.exec(entry)?.[1];
+      if (vid && pub) out.set(vid, pub);
+    }
+  } catch {
+    /* dates are a bonus, never a reason to fail the listing */
+  }
+  return out;
+}
+
 app.get('/v1/yt/list', async (c) => {
   const type = c.req.query('type');
   const id = c.req.query('id') ?? '';
   if ((type !== 'playlist' && type !== 'channel') || !/^[\w-]{10,64}$/.test(id)) {
     return c.json({ error: 'invalid params' }, 400);
   }
+  const kind = type as YtKind;
   return edgeCached(
     `https://cache.seseri/yt-list?t=${type}&i=${encodeURIComponent(id)}`,
     15 * 60,
     c.executionCtx,
     async () => {
-      const listing = await ytList(c.env.KV, type as YtKind, id);
+      const [listing, dates] = await Promise.all([tubeList(kind, id), atomDates(kind, id)]);
       if (!listing) return c.json({ error: 'no upstream' }, 502);
+      if (dates.size) {
+        for (const item of listing.items) {
+          item.published = dates.get(item.videoId) ?? '';
+        }
+      }
       return c.json(listing);
     },
   );
@@ -165,20 +238,15 @@ app.get('/v1/yt/search', async (c) => {
       } catch (e) {
         console.error('tubeSearch failed:', (e as Error).message);
       }
-      try {
-        const items = await poolSearch(c.env.KV, q);
-        return c.json({ items });
-      } catch {
-        return c.json({ error: 'no upstream' }, 502);
-      }
+      return c.json({ error: 'no upstream' }, 502);
     },
   );
 });
 
 /**
  * Resolve an audio format for the audio proxy; cached in KV (URLs ~6 h).
- * Failures are cached too ("none") so /v1/yt/resolve falls through to the
- * public pool quickly instead of re-probing every client each time.
+ * Failures are cached too ("none") so an unresolvable video fails fast instead
+ * of re-probing every client on each request.
  */
 async function audioFor(kv: KVNamespace, id: string): Promise<TubeAudio | null> {
   const key = 'yta2:' + id;
@@ -194,34 +262,45 @@ async function audioFor(kv: KVNamespace, id: string): Promise<TubeAudio | null> 
   return fresh;
 }
 
+/**
+ * Innertube only: its stream URLs are IP-bound to this worker, so the client
+ * gets our /v1/yt/audio proxy URL rather than the raw googlevideo one.
+ *
+ * A public-Piped fallback used to sit behind this. It was removed after being
+ * measured: across 70 videos it resolved zero, and all 7 instances failed a
+ * direct `/streams` probe (scripts/yt-resolve-rate.cjs). A 502 here is now the
+ * honest answer, and the client says so instead of dropping to an ad-carrying
+ * iframe that cannot play with the screen off.
+ */
 app.get('/v1/yt/resolve', async (c) => {
   const id = c.req.query('id') ?? '';
   if (!/^[\w-]{11}$/.test(id)) return c.json({ error: 'invalid id' }, 400);
-  // Innertube first: its stream URLs are IP-bound to this worker, so the
-  // client gets our /v1/yt/audio proxy URL instead of the raw googlevideo one.
   const own = await audioFor(c.env.KV, id);
-  if (own) {
-    return c.json({ audioUrl: new URL('/v1/yt/audio?id=' + id, c.req.url).href });
-  }
-  return edgeCached(
-    'https://cache.seseri/yt-resolve?i=' + encodeURIComponent(id),
-    5 * 60, // public-instance URLs expire upstream — keep this short
-    c.executionCtx,
-    async () => {
-      const audioUrl = await ytResolve(c.env.KV, id);
-      if (!audioUrl) return c.json({ error: 'no stream' }, 502);
-      return c.json({ audioUrl });
-    },
-  );
+  if (!own) return c.json({ error: 'no stream' }, 502);
+  return c.json({ audioUrl: new URL('/v1/yt/audio?id=' + id, c.req.url).href });
 });
 
 /**
  * Stream the audio bytes through the worker (range-aware → seek works).
  * googlevideo rejects range-less and open-ended requests but happily serves
- * bounded ranges — so the requested span is fetched as sequential ≤4 MB
- * chunks stitched into one streamed response.
+ * bounded ranges — so the requested span is fetched as sequential chunks
+ * stitched into one streamed response.
+ *
+ * SUBREQUEST BUDGET. Workers allow a fixed number of subrequests per *request*
+ * (50 on the free plan). The old code answered a `bytes=0-` with the WHOLE
+ * file in 1 MB chunks, so a 57 MB episode needed 57 subrequests: the loop
+ * died around 50 MB, the `catch` swallowed it, and the response closed early
+ * having promised a larger `content-length`. The browser saw a truncated body,
+ * fired `error`, and playback stopped mid-episode with nothing in the logs.
+ *
+ * The fix is to stop trying to serve everything in one response. A server may
+ * return less than the requested range; the client then asks for the rest.
+ * So each response carries at most RESPONSE_CAP bytes, which pins the
+ * subrequest count per request at RESPONSE_CAP / AUDIO_CHUNK (+1 for a format
+ * refresh) regardless of how long the episode is.
  */
-const AUDIO_CHUNK = 1024 * 1024;
+const AUDIO_CHUNK = 4 * 1024 * 1024;
+const RESPONSE_CAP = 16 * 1024 * 1024;
 
 app.get('/v1/yt/audio', async (c) => {
   const id = c.req.query('id') ?? '';
@@ -240,6 +319,18 @@ app.get('/v1/yt/audio', async (c) => {
     m && m[2] ? Math.min(parseInt(m[2]), size ? size - 1 : Infinity) : size ? size - 1 : -1;
   if (endWanted < 0) return c.json({ error: 'no stream' }, 502); // unknown length
   if (start > endWanted) return c.body(null, 416);
+  /**
+   * A ranged client (every media element) gets at most RESPONSE_CAP and comes
+   * back for the rest, each continuation with a fresh subrequest budget.
+   *
+   * A range-LESS client gets the whole file: that is the offline-download path
+   * (`player/offline.ts` fetches with no Range), and capping it would silently
+   * store a truncated episode. 206 is not a legal answer to a request that
+   * carried no Range, so there is no way to signal a short read there either.
+   * Its ceiling is therefore the plain subrequest budget — about 190 MB at
+   * AUDIO_CHUNK 4 MB on the free plan, well past any real episode.
+   */
+  const endServed = clientRanged ? Math.min(endWanted, start + RESPONSE_CAP - 1) : endWanted;
 
   const chunk = async (from: number, to: number, allowRetry: boolean): Promise<Response> => {
     // googlevideo's own `range` query param passes where the Range header is
@@ -258,13 +349,13 @@ app.get('/v1/yt/audio', async (c) => {
   };
 
   // Probe the first chunk before committing to a streamed response
-  const firstTo = Math.min(start + AUDIO_CHUNK - 1, endWanted);
+  const firstTo = Math.min(start + AUDIO_CHUNK - 1, endServed);
   const first = await chunk(start, firstTo, true);
   if (!first.ok && first.status !== 206) {
     return c.json({ error: 'upstream ' + first.status }, 502);
   }
 
-  const total = endWanted - start + 1;
+  const total = endServed - start + 1;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
@@ -279,8 +370,8 @@ app.get('/v1/yt/audio', async (c) => {
             controller.enqueue(value);
           }
           from += AUDIO_CHUNK;
-          if (from > endWanted) break;
-          res = await chunk(from, Math.min(from + AUDIO_CHUNK - 1, endWanted), true);
+          if (from > endServed) break;
+          res = await chunk(from, Math.min(from + AUDIO_CHUNK - 1, endServed), true);
           if (!res.ok && res.status !== 206) break;
         }
       } catch {
@@ -301,7 +392,7 @@ app.get('/v1/yt/audio', async (c) => {
     'content-length': String(total),
   });
   if (clientRanged) {
-    headers.set('content-range', `bytes ${start}-${endWanted}/${size}`);
+    headers.set('content-range', `bytes ${start}-${endServed}/${size}`);
     return new Response(stream, { status: 206, headers });
   }
   return new Response(stream, { status: 200, headers });
@@ -309,9 +400,4 @@ app.get('/v1/yt/audio', async (c) => {
 
 app.notFound((c) => c.json({ error: 'not found' }, 404));
 
-export default {
-  fetch: app.fetch,
-  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(refreshHealth(env.KV).then(() => {}));
-  },
-};
+export default { fetch: app.fetch };

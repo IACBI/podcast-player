@@ -17,7 +17,7 @@ vi.mock('../storage/db', () => ({
 }));
 
 // Never hit the network for YT resolution — offline tests supply direct URLs.
-vi.mock('../youtube/piped', () => ({ ytServiceAudioUrl: vi.fn(async () => '') }));
+vi.mock('../youtube/service', () => ({ ytServiceAudioUrl: vi.fn(async () => '') }));
 
 import {
   downloadOffline,

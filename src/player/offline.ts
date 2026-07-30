@@ -1,7 +1,7 @@
 import type { Episode } from '../feeds/types';
 import { httpsOnly } from '../lib/safe';
 import { deleteDownload, getDownload, listDownloads, putDownload } from '../storage/db';
-import { ytServiceAudioUrl } from '../youtube/piped';
+import { ytServiceAudioUrl } from '../youtube/service';
 
 /**
  * Offline episode audio: bytes live in the Cache API bucket `seseri-audio`
@@ -30,6 +30,7 @@ async function resolveAudioUrl(ep: Episode, feedIsYT: boolean): Promise<string> 
   return src;
 }
 
+/** Exported for its own unit test; production callers go through `offlineAudioUrl`. */
 export async function isDownloaded(episodeId: string): Promise<boolean> {
   return (await getDownload(episodeId)) !== undefined;
 }

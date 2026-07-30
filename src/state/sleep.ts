@@ -30,6 +30,3 @@ export const SLEEP_PRESETS = [0, 5, 10, 15, 30, 45, 60, 90] as const;
 /** How much "+5" adds. */
 export const SLEEP_EXTEND_MS = 5 * 60_000;
 
-export function sleepActive(): boolean {
-  return sleepState().mode !== 'off';
-}

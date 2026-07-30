@@ -18,7 +18,7 @@ import { artAt, artSrcset } from '../../lib/art';
 import { dprWidths, HEADER_ART_PX } from '../art-tile';
 import { t } from '../../i18n';
 import { getProgress } from '../../storage/progress';
-import { queuePositions } from '../../state/queue';
+import { queue, queuePositions } from '../../state/queue';
 import { settings, type Settings } from '../../state/settings';
 import { isSubscribed, toggleSubscription } from '../../storage/subscriptions';
 import { confirmDialog } from '../confirm';
@@ -271,8 +271,9 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
 
     const S = settings();
     // Built once per render: a per-row queuePosition() lookup would make this
-    // O(episodes × queue) on every session change.
-    const qPos = queuePositions();
+    // O(episodes × queue) on every session change. Scoped to this feed — the
+    // queue spans feeds now.
+    const qPos = queuePositions(s.meta?.id ?? '');
     const ids = s.filtered.map((ep) => String(ep.trackId));
     const sameList = ids.length === renderedIds.length && ids.every((id, i) => renderedIds[i] === id);
 
@@ -445,6 +446,9 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
 
   // ── reactivity ───────────────────────────────────────────────────
   playback.session.subscribe(render);
+  // The queue is no longer feed-scoped, so a mutation from anywhere (the queue
+  // view, auto-next consuming an entry) must refresh this list's badges.
+  queue.subscribe(() => render(playback.session()));
   render(playback.session());
 
   const view: PodcastView = {

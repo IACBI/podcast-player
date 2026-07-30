@@ -21,6 +21,8 @@ import {
 
 export interface HomeViewDeps {
   openFeed(req: FeedRequest): void;
+  /** Open a feed AND load its last-played episode — the continue rail's whole job. */
+  resumeFeed(req: FeedRequest): void;
 }
 
 export interface HomeView extends View {
@@ -83,7 +85,7 @@ export function initHomeView(deps: HomeViewDeps): HomeView {
       ),
       h('div', { className: 'row-meta' }, fmtTime(item.positionSec)),
     );
-    activate(row, () => deps.openFeed(item.req));
+    activate(row, () => deps.resumeFeed(item.req));
 
     const bar = h(
       'div',

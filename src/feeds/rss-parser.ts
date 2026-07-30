@@ -1,4 +1,4 @@
-import type { Episode, FeedMeta } from './types';
+import type { Episode } from './types';
 
 /** Namespace-agnostic direct-child text (itunes:duration vs duration etc.). */
 function childText(parent: Element, tag: string): string {
@@ -94,6 +94,3 @@ export function parseRss(xmlText: string): ParsedRss {
   return { title, author, art, episodes };
 }
 
-export function rssMeta(parsed: ParsedRss, feedId: string): FeedMeta {
-  return { id: feedId, name: parsed.title, artist: parsed.author, art: parsed.art };
-}

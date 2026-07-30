@@ -101,6 +101,42 @@ describe('/v1/feed proxy', () => {
     fetchMock.get('https://feeds.example.com').intercept({ path: '/dead' }).reply(500, 'x');
     expect((await call('/v1/feed?url=' + encodeURIComponent('https://feeds.example.com/dead'))).status).toBe(502);
   });
+
+  it('never stores a credential-bearing feed in the shared edge cache', async () => {
+    // A paid feed's URL contains the listener's own subscriber token. It is
+    // routed here precisely BECAUSE it must not reach a third party — writing
+    // it into Cloudflare's shared cache under `Cache-Control: public` for 15
+    // minutes undid that.
+    const priv = 'https://feeds.example.com/private?auth=Ab3xK9zQ11mNpQrStUvWxYz';
+    fetchMock
+      .get('https://feeds.example.com')
+      .intercept({ path: /^\/private/ })
+      .reply(200, '<rss><channel><title>Paid</title></channel></rss>', {
+        headers: { 'content-type': 'application/rss+xml' },
+      })
+      .times(2);
+
+    const first = await call('/v1/feed?url=' + encodeURIComponent(priv));
+    expect(first.status).toBe(200);
+    expect(first.headers.get('cache-control')).toBe('no-store');
+    expect(first.headers.get('x-seseri-cache')).toBeNull(); // never went through edgeCached
+
+    // A second call must reach the upstream again rather than a cached copy —
+    // the `.times(2)` above fails the run if it does not.
+    expect((await call('/v1/feed?url=' + encodeURIComponent(priv))).status).toBe(200);
+  });
+
+  it('still edge-caches an ordinary public feed', async () => {
+    fetchMock
+      .get('https://feeds.example.com')
+      .intercept({ path: '/public.xml' })
+      .reply(200, '<rss><channel><title>Free</title></channel></rss>', {
+        headers: { 'content-type': 'application/rss+xml' },
+      });
+    const res = await call('/v1/feed?url=' + encodeURIComponent('https://feeds.example.com/public.xml'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-seseri-cache')).toBe('miss');
+  });
 });
 
 describe('/v1/itunes proxy', () => {

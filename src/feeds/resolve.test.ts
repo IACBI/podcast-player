@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveFeed } from './resolve';
 import type { ResolveOptions } from './resolve';
+import { DEFAULT_SETTINGS, settings } from '../state/settings';
 
 const OPTS: ResolveOptions = { ytVideoTitle: 'YouTube video' };
 
@@ -25,7 +26,13 @@ const RSS = `<?xml version="1.0" encoding="UTF-8"?>
 </channel>
 </rss>`;
 
-afterEach(() => vi.unstubAllGlobals());
+// The RSS path reaches the network through the public proxies, which are
+// opt-in and off by default (see proxy-chain.ts).
+beforeEach(() => settings.set({ ...DEFAULT_SETTINGS, allowPublicProxies: true }));
+afterEach(() => {
+  vi.unstubAllGlobals();
+  settings.set({ ...DEFAULT_SETTINGS });
+});
 
 describe('resolveFeed — itunes', () => {
   it('resolves an Apple id through the lookup flow', async () => {
@@ -91,5 +98,15 @@ describe('resolveFeed — rss', () => {
     await expect(
       resolveFeed({ kind: 'rss', url: 'https://feeds.example.com/pod' }, OPTS),
     ).rejects.toThrow('fetch failed');
+  });
+
+  it('refuses the feed rather than reaching a proxy when the setting is off', async () => {
+    settings.set({ ...DEFAULT_SETTINGS, allowPublicProxies: false });
+    const fetchMock = vi.fn(async () => new Response(RSS, { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      resolveFeed({ kind: 'rss', url: 'https://feeds.example.com/pod' }, OPTS),
+    ).rejects.toThrow('proxies-disabled');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,153 @@
 > reaching 100 rolls into the minor instead — `4.1.99` → `4.2.0`. Releases are
 > not semver-major-bumped for feature work.
 
+## 4.1.27 — 2026-07-31
+
+### Playback session (the "opening a podcast stops the music" bug)
+
+- **Browsing a feed no longer touches the transport.** One `session` object
+  meant both "the feed on screen" and "the thing playing", so `openFeed` called
+  `embedStop()`, `clearQueue()` and then `audio.load()` for the newly-opened
+  feed's last-played episode — which stops the element even with
+  `autoplay: false`. Opening a podcast you had listened to before killed
+  whatever was playing and wiped the queue. The playing session now lives in
+  `player/session.ts` and is written only when the user actually starts an
+  episode; `ui/playback-controller.ts` keeps the browse session and derives the
+  "now playing" row highlight from the other. Reproduced end-to-end before and
+  after, and pinned by `src/ui/playback-controller.test.ts`.
+- **prev / next / auto-next follow the playing feed**, not whichever list is on
+  screen — they used to walk the browsed feed's array and could jump to an
+  unrelated episode.
+- **The queue survives.** Entries carry `{ feedId, trackId, title, feedName }`,
+  persist to `localStorage`, span feeds, and are no longer cleared by opening
+  anything. Auto-next can therefore continue into another show's episode,
+  loading that feed from cache or the network as needed.
+- Continue-listening rows and the `?resume=1` shortcut now ask for a resume
+  explicitly (`resumeLastPlayed()`), which is the behaviour that used to be a
+  side effect of opening any feed at all.
+- Transport keyboard shortcuts work wherever something is playing, instead of
+  requiring the feed view to be open.
+
+### YouTube: ad-free or not at all
+
+- **The `youtube-nocookie` iframe fallback is gone.** It played ads and stopped
+  the moment the screen locked — the two things the app promises YouTube
+  listeners it will not do. A video whose audio cannot be resolved now says so.
+  The decision was measured, not assumed (`scripts/yt-resolve-rate.cjs`):
+  ~95% of podcast/talk videos resolve to a real audio stream, ~43% of
+  music-label ones. Removing it also drops the YouTube iframe API, two CSP
+  origins and `frame-src` entirely — the app now loads no frames at all.
+- **The public Piped audio path was dead and is removed.** Zero successes
+  across 70 videos through the Worker's pool, and all seven instances failed a
+  direct `/streams` probe. Piped/Invidious remain for listing.
+- **Long episodes no longer cut out mid-file.** `/v1/yt/audio` streamed a whole
+  file in 1 MB chunks, so a ~57 MB episode needed ~57 subrequests and blew the
+  free plan's 50-per-request limit; the error was swallowed and the response
+  closed short of its promised `content-length`, which the browser reported as
+  a generic media error. Ranged requests are now answered with at most 16 MB in
+  4 MB chunks, and the client comes back for the rest.
+- **`Range: bytes=1-` no longer bypasses the rate limit** on the audio proxy —
+  only `bytes=0-` was counted, and that route has no Origin gate to fall back
+  on.
+- `api.rss2json.com` is no longer the primary source for YouTube Atom feeds.
+
+### YouTube listings: 15 episodes → the whole channel
+
+- **`/v1/yt/list` now uses the same Innertube session that resolves audio.** It
+  went through a health-checked Piped/Invidious pool that was measured
+  completely dead — every instance 502/403 on every listing endpoint, from this
+  machine and from Cloudflare — so every YouTube show in the app was falling
+  through to the Atom feed and showing exactly its newest ~15 items.
+
+  Measured against the **deployed** Worker on fresh channels: ~150 episodes on
+  average (60–360), 70–92% of channels answering, median 14 s and p90 20 s for
+  the first open, then edge-cached for 15 minutes. Titles and durations on 100%
+  of rows. The success rate swings between runs because YouTube's bot wall
+  treats datacenter IPs inconsistently — a local machine pages the same channels
+  to 360 items every time, Cloudflare does not, which is why the numbers here
+  are the production ones and not the far prettier local ones.
+- **Failures degrade to exactly the old behaviour.** When the Worker cannot list
+  a channel, the app falls back to YouTube's Atom feed — the same ~15 items
+  every channel used to be capped at — so this is an improvement in every
+  outcome rather than a trade.
+- Channel paging is time-boxed (8 s) with the first page retried up to three
+  times, after measuring that an unbounded walk averaged 248 items but took a
+  median of 30 s and up to 55 s, which the client abandons at 25 s.
+- **A partial listing says so.** "150 episodes ✓ · older episodes could not be
+  loaded" — a prefix of a channel is never presented as the whole channel.
+- Absolute upload dates are merged in from YouTube's own Atom feed. Innertube
+  reports only relative ages ("1 hour ago"), and turning that into a timestamp
+  would be inventing precision, so items the Atom feed does not reach simply
+  carry no date.
+- **Fixed a sort bug this exposed:** a single dated item was enough to switch
+  the list to chronological sorting, which then treated every undated episode
+  as epoch 0 and flung them to one end. Chronological sorting now requires most
+  of the feed to be dated.
+- Removed with the dead pool: `worker/src/yt.ts` entirely, the half-hourly
+  health-check cron, the client's Piped/Invidious listing and search
+  fallbacks, `svcFirst`, and **twelve upstream origins from both CSPs**.
+  `src/youtube/piped.ts` became `src/youtube/service.ts` — it had no Piped left
+  in it.
+
+### Truncated archives are now visible
+
+- Apple's lookup returns a small slice of a show and says nothing about it:
+  measured, The Daily reports `trackCount` 2676 and hands back **41** episodes;
+  Radiolab reports 859 and hands back 200. The status line now reads
+  "41 episodes ✓ · of 2676 in the archive" instead of implying the show is 41
+  episodes long. (Switching these feeds to their RSS `feedUrl` would lift the
+  cap but re-key every episode and orphan saved positions — left as an open
+  decision, not done silently.)
+
+### Media session
+
+- Added the `seekto` handler, so the lock-screen scrubber actually seeks
+  (position state was already advertised, which drew the bar but did nothing),
+  plus `stop` and the platform's own `seekOffset`.
+- `playbackState` is now reported, and position state uses the real playback
+  rate rather than the stored preference.
+- Each action handler is registered separately: one unsupported action used to
+  drop every handler after it.
+
+### Privacy & security
+
+- **Third-party CORS proxies are opt-in** (Settings → Privacy, default off).
+  Three operators were raced for every feed, so each saw what the user listens
+  to and whichever answered first decided what got parsed — enclosure URLs
+  included.
+- **Paid feeds are never written to the shared edge cache.** They are routed
+  through the Worker precisely because they must not reach a third party, and
+  were then being stored under `Cache-Control: public` for 15 minutes.
+- Restored settings are validated against an allow-list before reaching CSS
+  custom properties or `audio.playbackRate`, and the sanitised set is written
+  back.
+
+### Data & correctness
+
+- **"Clear all data" now actually clears it.** It only emptied `localStorage`,
+  leaving the IndexedDB feed/resume/download stores and the `seseri-audio`
+  Cache bucket — potentially gigabytes of downloaded episodes — in place.
+- **JSON backups can be restored.** There was an export button and no import,
+  which makes the export not a backup.
+- **The download fallback no longer claims success it cannot observe.** A
+  cross-origin `download` attribute is ignored, so the file was opened in a tab
+  while the toast said "saved".
+- **Episode notes work for Apple podcasts.** The lookup response carries them;
+  nothing read it, so the Now Playing notes panel was permanently empty unless
+  the feed had been opened by direct RSS URL.
+- **The Apple storefront follows the UI language** instead of being pinned to
+  `country=tr` for all eight languages.
+- OPML-imported subscriptions get their artwork and author backfilled the first
+  time the feed is opened.
+
+### Removed
+
+- Unreferenced exports: `currentView`, `rssMeta`, `sleepActive`, `bindSelect`,
+  and the `focusInput` / `restoreFocus` pair in the search view (the latter is
+  now folded into `focusTarget`, so back-navigation really does return focus to
+  the row that opened the feed). Stale "WP-0 stub" / "P3 replaces this" notes
+  that no longer described the code.
+
 ## 4.1.26 — 2026-07-30
 
 ### Artwork resolution

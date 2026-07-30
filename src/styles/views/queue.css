@@ -30,11 +30,29 @@
   text-align: end;
 }
 
-.queue-name {
+/* Title over feed name: the queue spans feeds, so a row has to say which
+   show it came from. */
+.queue-info {
   flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.queue-name {
   min-inline-size: 0;
   font-size: var(--player-font-size);
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-feed {
+  min-inline-size: 0;
+  font-size: var(--fs-sm);
+  color: var(--text3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

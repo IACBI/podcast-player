@@ -1,5 +1,5 @@
-import { fetchTextProxied, fetchWithTimeout } from '../feeds/proxy-chain';
-import { ytIdFrom, type YtListing } from './piped';
+import { fetchTextProxied } from '../feeds/proxy-chain';
+import { type YtListing } from './service';
 
 /** Recursively collect descendant elements by local (namespace-stripped) name. */
 function ytFindAll(root: Element, localName: string): Element[] {
@@ -20,51 +20,18 @@ function childText(parent: Element, tag: string): string {
   return '';
 }
 
-interface Rss2JsonResponse {
-  status?: string;
-  feed?: { title?: string; author?: string };
-  items?: Array<{ guid?: string; link?: string; title?: string; pubDate?: string; thumbnail?: string }>;
-}
-
 /**
- * Fetch + normalize a YouTube Atom feed (latest ~15). Primary: rss2json
- * (CORS-enabled JSON). Fallback: raw Atom XML through the proxy chain.
+ * Fetch + normalize a YouTube Atom feed (latest ~15) from the raw XML.
+ *
+ * `api.rss2json.com` used to be the PRIMARY source here, ahead of our own
+ * Worker. That handed a third party the channel or playlist the user was
+ * opening, on an unauthenticated endpoint with a small shared rate limit, to
+ * do something the proxy chain below already does.
  */
 export async function fetchYtFeed(
   feedUrl: string,
   signal?: AbortSignal,
-  perTimeout = 15000,
 ): Promise<YtListing> {
-  try {
-    let j: Rss2JsonResponse | null = null;
-    try {
-      const res = await fetchWithTimeout(
-        'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(feedUrl),
-        signal,
-        perTimeout,
-      );
-      if (res.ok) j = (await res.json()) as Rss2JsonResponse;
-    } catch (e) {
-      if (signal?.aborted) throw e;
-    }
-    if (j && j.status === 'ok' && Array.isArray(j.items) && j.items.length) {
-      const items = j.items
-        .map((it) => ({
-          videoId: ytIdFrom(it.guid ?? '') || ytIdFrom(it.link ?? ''),
-          title: it.title || '',
-          published: it.pubDate || '',
-          durationSec: 0,
-          thumb: it.thumbnail || '',
-        }))
-        .filter((x) => x.videoId);
-      if (items.length) {
-        return { title: j.feed?.title || 'YouTube', author: j.feed?.author || '', items };
-      }
-    }
-  } catch (e) {
-    if (signal?.aborted) throw e;
-  }
-
   // No credential guard: this URL is built by us from a public channel or
   // playlist id. A 24-char channel id looks exactly like an opaque token, so
   // the guard would refuse every YouTube channel.

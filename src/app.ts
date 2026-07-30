@@ -7,6 +7,7 @@ import { pbCurrent, pbDuration, pbSeekTo } from './player/engine';
 import { loadProgress, saveProgressNow, setQuotaListener } from './storage/progress';
 import { local } from './storage/local';
 import { loadSubscriptions } from './storage/subscriptions';
+import { loadQueue } from './state/queue';
 import { loadSettings, settings } from './state/settings';
 import type { FeedRequest } from './feeds/types';
 import { bindI18nDom } from './ui/i18n-dom';
@@ -34,6 +35,7 @@ export function boot(): void {
   loadSettings();
   loadProgress();
   loadSubscriptions();
+  loadQueue();
   const S = settings();
   applyTheme(S.theme);
   applyAccent(S.accentColor);
@@ -52,16 +54,28 @@ export function boot(): void {
     local.set('pp_last_feed', req);
   };
 
-  /** Central "open a feed" intent — every entry point funnels through here. */
-  const openFeed = (req: FeedRequest, opts: { push?: boolean; focus?: boolean } = {}): void => {
+  /**
+   * Central "open a feed" intent — every entry point funnels through here.
+   * `resume` is opt-in: opening a feed is browsing, and browsing must never
+   * touch the transport. Only the surfaces that mean "continue where I left
+   * off" pass it.
+   */
+  const openFeed = (
+    req: FeedRequest,
+    opts: { push?: boolean; focus?: boolean; resume?: boolean } = {},
+  ): void => {
     rememberFeed(req);
     playback.openFeed(req);
+    if (opts.resume) playback.resumeLastPlayed();
     showView('podcast', { focus: opts.focus ?? true });
     router.feedOpened(req, opts.push ?? true);
   };
 
   // ── views ─────────────────────────────────────────────────────────
-  const home = initHomeView({ openFeed: (req) => openFeed(req) });
+  const home = initHomeView({
+    openFeed: (req) => openFeed(req),
+    resumeFeed: (req) => openFeed(req, { resume: true }),
+  });
   // (Phase 3 wires search.restoreFocus into back-navigation focus hand-off.)
   initSearchView({ openFeed: (req) => openFeed(req) });
   initLibraryView({ openFeed: (req) => openFeed(req) });
@@ -77,7 +91,7 @@ export function boot(): void {
     },
     openNowPlaying: () => nowPlayingSheet.open(),
   });
-  initQueueView({ playback });
+  initQueueView();
   initSettingsView({ onDataCleared: () => home.refresh() });
 
   // Static markup is in place — localize it (re-runs on language change).
@@ -118,13 +132,17 @@ export function boot(): void {
 
   // ── media session ────────────────────────────────────────────────
   initMediaSession({
-    seekBack: () => pbSeekTo(Math.max(0, pbCurrent() - settings().skipBack)),
-    seekForward: () => {
+    // The platform's own suggested offset wins when it sends one (Android Auto
+    // and some headsets do); otherwise the user's skip setting applies.
+    seekBack: (offset) => pbSeekTo(Math.max(0, pbCurrent() - (offset ?? settings().skipBack))),
+    seekForward: (offset) => {
       const d = pbDuration();
-      if (d) pbSeekTo(Math.min(pbCurrent() + settings().skipForward, d));
+      if (d) pbSeekTo(Math.min(pbCurrent() + (offset ?? settings().skipForward), d));
     },
     prevTrack: () => playback.prev(),
     nextTrack: () => playback.next(),
+    seekTo: (seconds) => pbSeekTo(Math.max(0, seconds)),
+    stop: () => playback.reset(),
   });
 
   // ── persistence on exit ──────────────────────────────────────────
@@ -148,7 +166,8 @@ export function boot(): void {
         : null;
   if (initialReq) {
     // Cold deep link: don't steal focus on first paint, replace (no push).
-    openFeed(initialReq, { push: false, focus: false });
+    // The "Resume" app shortcut asked to continue; a shared ?podcast= link did not.
+    openFeed(initialReq, { push: false, focus: false, resume: initialReq === resumeReq });
   } else if (route.kind === 'view') {
     showView(route.view as ViewName, { focus: false });
   } else {

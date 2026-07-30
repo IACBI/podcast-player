@@ -1,13 +1,7 @@
 import type { Episode, ResolvedFeed, YouTubeRef } from '../feeds/types';
 import { ytToToken } from '../feeds/input-parse';
 import { fetchYtFeed } from './atom';
-import { ytServiceList, type YtItem } from './piped';
-
-/**
- * Injected by the embed module: enumerate a full playlist's video ids via the
- * IFrame player (no key needed). Optional — resolver degrades without it.
- */
-export type PlaylistIdsFn = (playlistId: string, signal?: AbortSignal) => Promise<string[]>;
+import { ytServiceList, type YtItem } from './service';
 
 function thumbOf(videoId: string): string {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
@@ -29,14 +23,19 @@ function epFromItem(it: YtItem): Episode {
 
 /**
  * Resolve a YouTube playlist/channel/video into a feed.
- * Preferred: full list via Worker/Piped/Invidious. Fallback: keyless Atom
- * feed (latest ~15) + optional player playlist enumeration.
+ * Preferred: full list via Worker/Piped/Invidious. Fallback: the keyless Atom
+ * feed, which only carries the latest ~15 items (`limited: true`).
  * `placeholderTitle` fills the single-video pseudo-feed name (localized).
+ *
+ * A playlist could also be enumerated in full through the YouTube IFrame
+ * player, but that arrived with the embed fallback and went out with it — an
+ * iframe that plays ads and dies on a locked screen is not worth keeping
+ * loaded just to read a playlist's ids.
  */
 export async function resolveYouTube(
   info: YouTubeRef,
   signal: AbortSignal | undefined,
-  opts: { placeholderTitle: string; playlistIds?: PlaylistIdsFn },
+  opts: { placeholderTitle: string },
 ): Promise<ResolvedFeed> {
   let eps: Episode[] = [];
   let title = 'YouTube';
@@ -69,6 +68,8 @@ export async function resolveYouTube(
       title = svc.title || 'YouTube';
       author = svc.author || '';
       eps = svc.items.map(epFromItem);
+      // The Worker says when it could not reach the end of the channel.
+      limited = svc.partial === true;
     } else {
       const feedUrl =
         'https://www.youtube.com/feeds/videos.xml?' +
@@ -77,39 +78,16 @@ export async function resolveYouTube(
       const parsed = await fetchYtFeed(feedUrl, signal);
       title = parsed.title || 'YouTube';
       author = parsed.author || '';
-      const metaById = new Map(parsed.items.map((it) => [it.videoId, it]));
-      const feedNewestId = parsed.items[0]?.videoId;
-
-      let fullIds: string[] | null = null;
-      if (info.type === 'playlist' && opts.playlistIds) {
-        try {
-          fullIds = await opts.playlistIds(info.id, signal);
-        } catch (e) {
-          if (signal?.aborted) throw e;
-          fullIds = null;
-        }
-      }
-
-      const mk = (id: string): Episode => {
-        const it = metaById.get(id);
-        return {
-          trackId: id,
-          trackName: it?.title ?? '',
-          releaseDate: it?.published ?? '',
-          episodeUrl: '',
-          trackTimeMillis: 0,
-          ytId: id,
-          art: thumbOf(id),
-        };
-      };
-      if (fullIds && fullIds.length > parsed.items.length) {
-        const newestFirst = fullIds.slice();
-        if (!(feedNewestId && fullIds[0] === feedNewestId)) newestFirst.reverse();
-        eps = newestFirst.map(mk);
-      } else {
-        limited = true;
-        eps = parsed.items.map((it) => mk(it.videoId));
-      }
+      limited = true; // the Atom feed only ever carries the latest ~15
+      eps = parsed.items.map((it) => ({
+        trackId: it.videoId,
+        trackName: it.title,
+        releaseDate: it.published,
+        episodeUrl: '',
+        trackTimeMillis: 0,
+        ytId: it.videoId,
+        art: thumbOf(it.videoId),
+      }));
     }
   }
 

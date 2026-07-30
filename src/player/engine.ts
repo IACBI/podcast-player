@@ -1,9 +1,16 @@
 /**
- * Playback engine — the transport facade over the <audio> element and the
- * YouTube IFrame embed, so keyboard/waveform/Media Session stay agnostic.
- * Emits typed events instead of poking the DOM (UI subscribes).
+ * Playback engine — the transport facade over the <audio> element, so
+ * keyboard/waveform/Media Session stay agnostic. Emits typed events instead of
+ * poking the DOM (UI subscribes).
+ *
+ * There used to be a second transport here: the `youtube-nocookie` IFrame
+ * embed, used whenever no real audio stream could be resolved for a video. It
+ * was removed because it could not deliver the two things the app promises for
+ * YouTube — no ads, and playback that survives a locked screen. An iframe does
+ * neither. Measured against podcast/talk content the audio path resolves ~95%
+ * of videos (see scripts/yt-resolve-rate.cjs); the remainder now says so
+ * plainly instead of quietly serving ads that stop when the screen turns off.
  */
-import { getEmbed, YT_STATE } from '../youtube/embed';
 
 export type EngineEvent =
   | { type: 'play' }
@@ -27,170 +34,48 @@ function emit(e: EngineEvent): void {
 
 export const audio = new Audio();
 
-/** True while the current track plays through the embed (not <audio>). */
-let usingEmbed = false;
-let ytPoll: ReturnType<typeof setInterval> | null = null;
-
-export function setUsingEmbed(v: boolean): void {
-  usingEmbed = v;
-}
-export function isUsingEmbed(): boolean {
-  return usingEmbed;
-}
-
-function embedLive() {
-  const p = getEmbed();
-  return usingEmbed && p && typeof p.getPlayerState === 'function' ? p : null;
-}
-
 export function pbPaused(): boolean {
-  const p = embedLive();
-  return p ? p.getPlayerState() !== YT_STATE.PLAYING : audio.paused;
+  return audio.paused;
 }
 export function pbCurrent(): number {
-  try {
-    const p = embedLive();
-    return p ? p.getCurrentTime() || 0 : audio.currentTime;
-  } catch {
-    return 0;
-  }
+  return audio.currentTime;
 }
 export function pbDuration(): number {
-  try {
-    const p = embedLive();
-    return p ? p.getDuration() || 0 : audio.duration;
-  } catch {
-    return 0;
-  }
+  return audio.duration;
 }
 export function pbPlay(): void {
-  const p = embedLive();
-  if (p) p.playVideo();
-  else
-    audio.play().catch(() => {
-      /* autoplay blocked — user will press play */
-    });
+  audio.play().catch(() => {
+    /* autoplay blocked — user will press play */
+  });
 }
 export function pbPause(): void {
-  const p = embedLive();
-  if (p) p.pauseVideo();
-  else audio.pause();
+  audio.pause();
 }
-/**
- * Volume as 0–1 across both transports (the embed's own scale is 0–100).
- * Used by the sleep timer's fade-out; there is no volume UI.
- */
+
+/** Volume as 0–1. Used by the sleep timer's fade-out; there is no volume UI. */
 export function pbGetVolume(): number {
-  try {
-    const p = embedLive();
-    if (p && typeof p.getVolume === 'function') return (p.getVolume() || 0) / 100;
-    return audio.volume;
-  } catch {
-    return 1;
-  }
+  return audio.volume;
 }
 export function pbSetVolume(v: number): void {
-  const clamped = Math.max(0, Math.min(1, v));
-  try {
-    const p = embedLive();
-    if (p && typeof p.setVolume === 'function') p.setVolume(Math.round(clamped * 100));
-    else audio.volume = clamped;
-  } catch {
-    /* embed not ready */
-  }
+  audio.volume = Math.max(0, Math.min(1, v));
 }
 
 export function pbSeekTo(sec: number): void {
-  const p = embedLive();
-  if (p) p.seekTo(Math.max(0, sec), true);
-  else audio.currentTime = sec;
+  audio.currentTime = sec;
 }
 export function pbSetRate(r: number): void {
-  const p = embedLive();
-  if (p) {
-    // YouTube only accepts advertised rates — snap to the nearest one.
-    let rates: number[] = [1];
-    try {
-      rates = p.getAvailablePlaybackRates() || rates;
-    } catch {
-      /* keep default */
-    }
-    const near = rates.reduce((a, b) => (Math.abs(b - r) < Math.abs(a - r) ? b : a), rates[0] ?? 1);
-    try {
-      p.setPlaybackRate(near);
-    } catch {
-      /* embed not ready */
-    }
-  } else {
-    audio.playbackRate = r;
-  }
-}
-
-/** Stop the embed + its progress poll (when leaving a YouTube feed). */
-export function embedStop(): void {
-  stopEmbedPoll();
-  const p = getEmbed();
-  if (p) {
-    try {
-      p.stopVideo();
-    } catch {
-      /* already stopped */
-    }
-  }
-}
-
-/** The embed has no timeupdate event — poll while playing. */
-export function startEmbedPoll(): void {
-  if (ytPoll) return;
-  ytPoll = setInterval(() => {
-    if (usingEmbed && !pbPaused()) emit({ type: 'timeupdate', current: pbCurrent(), duration: pbDuration() });
-  }, 250);
-}
-export function stopEmbedPoll(): void {
-  if (ytPoll) {
-    clearInterval(ytPoll);
-    ytPoll = null;
-  }
-}
-
-/** Route embed state changes into engine events (wired by the player screen). */
-export function handleEmbedState(state: number): void {
-  if (state === YT_STATE.PLAYING) {
-    emit({ type: 'play' });
-    emit({ type: 'timeupdate', current: pbCurrent(), duration: pbDuration() });
-    startEmbedPoll();
-  } else if (state === YT_STATE.PAUSED) {
-    emit({ type: 'pause' });
-    emit({ type: 'timeupdate', current: pbCurrent(), duration: pbDuration() });
-    // Without this the 250 ms poll keeps making cross-iframe getPlayerState()
-    // calls for the rest of the session — while paused, while the sheet is
-    // closed, while the tab is in the background.
-    stopEmbedPoll();
-  } else if (state === YT_STATE.ENDED) {
-    emit({ type: 'pause' });
-    emit({ type: 'ended' });
-    stopEmbedPoll();
-  }
+  audio.playbackRate = r;
 }
 
 // <audio> events → engine events (throttled timeupdate ~4 fps like legacy)
 let lastUi = 0;
 audio.addEventListener('timeupdate', () => {
-  if (usingEmbed) return;
   const now = performance.now();
   if (now - lastUi < 250) return;
   lastUi = now;
   emit({ type: 'timeupdate', current: audio.currentTime, duration: audio.duration });
 });
-audio.addEventListener('play', () => {
-  if (!usingEmbed) emit({ type: 'play' });
-});
-audio.addEventListener('pause', () => {
-  if (!usingEmbed) emit({ type: 'pause' });
-});
-audio.addEventListener('ended', () => {
-  if (!usingEmbed) emit({ type: 'ended' });
-});
-audio.addEventListener('error', () => {
-  if (!usingEmbed) emit({ type: 'error' });
-});
+audio.addEventListener('play', () => emit({ type: 'play' }));
+audio.addEventListener('pause', () => emit({ type: 'pause' }));
+audio.addEventListener('ended', () => emit({ type: 'ended' }));
+audio.addEventListener('error', () => emit({ type: 'error' }));

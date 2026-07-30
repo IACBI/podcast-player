@@ -1,5 +1,14 @@
 /** Safe localStorage wrapper — ported from legacy `store` (quota-aware). */
 
+/**
+ * Absent in the node test environment (and in some embedded webviews). Checked
+ * per call rather than once at import: test files pick their own environment,
+ * so the answer is not the same for every importer.
+ */
+function unavailable(): boolean {
+  return typeof localStorage === 'undefined';
+}
+
 export const local = {
   get<T>(key: string, fallback: T): T {
     try {
@@ -10,6 +19,7 @@ export const local = {
     }
   },
   set(key: string, val: unknown, onQuota?: () => void): void {
+    if (unavailable()) return; // not a failure worth warning about
     try {
       localStorage.setItem(key, JSON.stringify(val));
     } catch (e) {

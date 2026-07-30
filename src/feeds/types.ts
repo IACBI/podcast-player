@@ -60,8 +60,14 @@ export interface YouTubeRef {
 export interface ResolvedFeed {
   meta: FeedMeta;
   episodes: Episode[];
-  /** True when only the latest ~15 items could be listed (YT Atom fallback). */
+  /** True when the list is only part of the show's archive. */
   limited: boolean;
+  /**
+   * Episodes the source says exist in total, when it says. Apple reports one
+   * (`trackCount`) that is routinely far larger than the list it returns, so
+   * the UI can say "41 of 2676" instead of implying the show has 41.
+   */
+  total?: number;
 }
 
 /** Result row from iTunes search. */

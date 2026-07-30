@@ -9,7 +9,7 @@
 
 import type { FeedRequest } from '../../feeds/types';
 import { searchPodcasts } from '../../feeds/itunes';
-import { ytServiceSearch, type YtSearchItem } from '../../youtube/piped';
+import { ytServiceSearch, type YtSearchItem } from '../../youtube/service';
 import { fmtDur } from '../../lib/format';
 import { parseDirectInput } from '../../feeds/input-parse';
 import { t } from '../../i18n';
@@ -23,13 +23,7 @@ export interface SearchViewDeps {
   openFeed(req: FeedRequest): void;
 }
 
-export interface SearchView extends View {
-  focusInput(): void;
-  /** Return keyboard focus to the row/input that opened a feed (back nav). */
-  restoreFocus(): void;
-}
-
-export function initSearchView(deps: SearchViewDeps): SearchView {
+export function initSearchView(deps: SearchViewDeps): View {
   const el = viewEl('search');
   el.innerHTML = `
     <div class="view-inner search-inner">
@@ -214,15 +208,19 @@ export function initSearchView(deps: SearchViewDeps): SearchView {
   });
   btn.addEventListener('click', () => void doSearch());
 
-  const view: SearchView = {
+  const view: View = {
     name: 'search',
     el,
-    focusTarget: () => input,
-    focusInput: () => input.focus(),
-    restoreFocus() {
-      if (lastFocusedRow?.isConnected) lastFocusedRow.focus({ preventScroll: false });
-      else input.focus({ preventScroll: false });
+    /**
+     * Coming back from a feed lands on the row that opened it rather than the
+     * search box, so the keyboard position is not lost. This used to be a
+     * separate `restoreFocus()` that nothing ever called; folding it into the
+     * focus target the view registry already consults makes it actually run.
+     */
+    focusTarget() {
+      const row = lastFocusedRow?.isConnected ? lastFocusedRow : null;
       lastFocusedRow = null;
+      return row ?? input;
     },
   };
   registerView(view);

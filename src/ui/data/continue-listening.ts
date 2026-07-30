@@ -1,10 +1,11 @@
 /**
  * Read-only aggregators for the Home view. ZERO writes — this module may only
  * read subscriptions, progress, the last-feed pointer and the IndexedDB feed
- * cache. WP-A implements `continueListening()`; the shape below is frozen.
+ * cache.
  */
 
 import type { Episode, FeedMeta, FeedRequest, Subscription } from '../../feeds/types';
+import { feedIdOf, requestFromFeedId } from '../../feeds/feed-id';
 import { ytFromToken } from '../../feeds/input-parse';
 import { subscriptions } from '../../storage/subscriptions';
 import { getLastPlayed, getProgress } from '../../storage/progress';
@@ -13,20 +14,12 @@ import { local } from '../../storage/local';
 
 /** Convert a stored subscription id into a feed request (legacy id scheme). */
 export function requestFromSubscription(sub: Subscription): FeedRequest | null {
-  const s = String(sub.id);
-  if (s.startsWith('yt:')) {
-    const p = s.split(':'); // yt:<type>:<id>
-    const type = p[1];
-    const id = p.slice(2).join(':');
-    if ((type === 'playlist' || type === 'channel' || type === 'video') && id) {
-      return { kind: 'yt', info: { type, id } };
-    }
-    // Older entries may carry the token instead
-    const ref = sub.yt ? ytFromToken(sub.yt) : null;
-    return ref ? { kind: 'yt', info: ref } : null;
-  }
-  if (s.startsWith('rss:')) return { kind: 'rss', url: s.slice(4) };
-  return { kind: 'itunes', id: s };
+  const req = requestFromFeedId(String(sub.id));
+  if (req) return req;
+  // Only reachable for a malformed `yt:` id — older entries may carry the
+  // deep-link token instead of a usable type/id pair.
+  const ref = sub.yt ? ytFromToken(sub.yt) : null;
+  return ref ? { kind: 'yt', info: ref } : null;
 }
 
 /** One "continue listening" row: an episode with saved progress + its feed. */
@@ -45,8 +38,6 @@ export interface ContinueItem {
  * for each subscription → getLastPlayed(feedId) → getProgress(episodeId) →
  * episode metadata from getCachedFeed(feedId). Feeds never cached are skipped
  * (no network). Sorted most-recently-meaningful first, capped at `limit`.
- *
- * WP-0 stub — WP-A lands the real implementation.
  */
 export async function continueListening(limit = 6): Promise<ContinueItem[]> {
   const out: ContinueItem[] = [];
@@ -62,7 +53,7 @@ export async function continueListening(limit = 6): Promise<ContinueItem[]> {
   // Most-recent feed pointer first — may point at a feed that isn't subscribed.
   const lastReq = local.get<FeedRequest | null>('pp_last_feed', null);
   if (lastReq) {
-    const feedId = feedIdFromRequest(lastReq);
+    const feedId = feedIdOf(lastReq);
     if (feedId) collect(await buildItem(feedId, lastReq), feedId);
   }
 
@@ -77,18 +68,6 @@ export async function continueListening(limit = 6): Promise<ContinueItem[]> {
   subs.forEach((sub, i) => collect(built[i] ?? null, String(sub.id)));
 
   return out.slice(0, limit);
-}
-
-/** Cache key / FeedMeta id for a request: `<id>` | `rss:<url>` | `yt:<type>:<id>`. */
-function feedIdFromRequest(req: FeedRequest): string {
-  switch (req.kind) {
-    case 'itunes':
-      return req.id;
-    case 'rss':
-      return 'rss:' + req.url;
-    case 'yt':
-      return `yt:${req.info.type}:${req.info.id}`;
-  }
 }
 
 /**

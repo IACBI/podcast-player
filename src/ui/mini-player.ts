@@ -1,10 +1,10 @@
-import { t } from '../i18n';
+import { currentLang, t } from '../i18n';
 import { artAt, artSrcset } from '../lib/art';
 import { dprWidths, MINI_ART_PX } from './art-tile';
 import { fmtTime } from '../lib/format';
 import { onEngine, pbDuration, pbSeekTo, pbSetRate } from '../player/engine';
 import { initSleepControl } from './sleep-control';
-import { nowPlaying } from '../state/now-playing';
+import { nowPlayingLabel, playing } from '../player/session';
 import { setSetting, settings } from '../state/settings';
 import type { PlaybackController } from './playback-controller';
 import { must } from './shell';
@@ -61,8 +61,13 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
     btnPlay.setAttribute('aria-label', playing ? t('pause') : t('play'));
   }
 
-  nowPlaying.subscribe((now) => {
+  function renderTrack(): void {
+    const s = playing();
+    const now = nowPlayingLabel(s);
     document.body.classList.toggle('has-track', now !== null);
+    // prev/next follow the PLAYING feed, not whichever list is on screen.
+    btnPrev.disabled = !s || s.index <= 0;
+    btnNext.disabled = !s || s.index >= s.episodes.length - 1;
     if (!now) return;
     title.textContent = now.title;
     feed.textContent = now.feedName;
@@ -83,13 +88,13 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
       art.removeAttribute('src');
     }
     art.style.display = src ? '' : 'none';
-  });
+  }
 
-  // prev/next availability tracks the playback session
-  playback.session.subscribe((s) => {
-    btnPrev.disabled = s.currentIndex <= 0;
-    btnNext.disabled = s.currentIndex < 0 || s.currentIndex >= s.filtered.length - 1;
-  });
+  playing.subscribe(renderTrack);
+  // The title can be a localized "Episode N" placeholder, so it is re-derived
+  // on a language switch rather than frozen at play time.
+  currentLang.subscribe(renderTrack);
+  renderTrack();
 
   onEngine((e) => {
     switch (e.type) {

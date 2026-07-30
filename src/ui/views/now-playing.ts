@@ -11,15 +11,20 @@ import { currentLang, t } from '../../i18n';
 import { artAt, artSrcset } from '../../lib/art';
 import { fmtTime } from '../../lib/format';
 import { httpsOnly } from '../../lib/safe';
-import { isUsingEmbed, onEngine, pbCurrent, pbDuration, pbSetRate } from '../../player/engine';
+import { onEngine, pbCurrent, pbDuration, pbSetRate } from '../../player/engine';
 import { hasShowNotes, parseShowNotes } from '../../feeds/show-notes';
 import { updateAmbient } from '../ambient';
 import { h } from '../h';
 import { initSleepControl } from '../sleep-control';
-import { nowPlaying, type NowPlaying } from '../../state/now-playing';
+import {
+  nowPlayingLabel,
+  playing,
+  type NowPlayingLabel,
+  type PlayingSession,
+} from '../../player/session';
 import { queue } from '../../state/queue';
 import { setSetting, settings, type Settings } from '../../state/settings';
-import type { PlaybackController, PlaybackSession } from '../playback-controller';
+import type { PlaybackController } from '../playback-controller';
 import { must } from '../shell';
 import { initWaveform, type WaveformController } from '../waveform';
 
@@ -55,7 +60,6 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
             <source id="npArtWebp" type="image/webp">
             <img class="np-art" id="npArt" alt="" width="640" height="640" fetchpriority="high" decoding="async">
           </picture>
-          <div class="yt-frame" id="ytFrame"><div id="ytHost"></div></div>
         </div>
 
         <div class="np-controls">
@@ -158,7 +162,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   });
 
   // ── play icon / title crossfade ──────────────────────────────────
-  let playing = false;
+  let iconShowsPlaying = false;
   function setPlayIcon(isPlaying: boolean): void {
     const u = btnPlay.querySelector('use');
     if (u) u.setAttribute('href', isPlaying ? '#ic-pause' : '#ic-play');
@@ -181,31 +185,28 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     queueBtn.classList.toggle('has-queue', n > 0);
   }
 
-  /** Show the embedded video frame only when a track actually falls back to it. */
-  function updateYtMode(): void {
-    player.classList.toggle('yt-mode', playback.session().isYT && isUsingEmbed());
-  }
-
-  // ── session → title, waveform, nav buttons, yt-mode ──────────────
+  // ── playing session → title, waveform, nav buttons, notes ───────
   let lastTrackId: string | null | undefined;
-  function applySession(s: PlaybackSession): void {
-    const ep = s.currentIndex >= 0 ? s.filtered[s.currentIndex] : undefined;
-    setNowTitle(ep ? ep.trackName || t('ep_fallback', s.currentIndex + 1) : t('pick_episode'));
+  function applyPlaying(s: PlayingSession | null): void {
+    const label = nowPlayingLabel(s);
+    const ep = s ? s.episodes[s.index] : undefined;
+    setNowTitle(label ? label.title : t('pick_episode'));
 
-    if (s.currentTrackId !== lastTrackId) {
-      lastTrackId = s.currentTrackId;
-      wave.build(s.currentTrackId || 'seseri');
+    const trackId = s ? s.trackId : null;
+    if (trackId !== lastTrackId) {
+      lastTrackId = trackId;
+      wave.build(trackId || 'seseri');
       wave.setProgress(0);
-      if (s.currentIndex < 0) {
+      if (!s) {
         elTCur.textContent = '0:00';
         elTTot.textContent = '0:00';
       }
     }
 
-    btnPrev.disabled = s.currentIndex <= 0;
-    btnNext.disabled = s.currentIndex < 0 || s.currentIndex >= s.filtered.length - 1;
-    updateYtMode();
+    btnPrev.disabled = !s || s.index <= 0;
+    btnNext.disabled = !s || s.index >= s.episodes.length - 1;
     applyNotes(ep?.description);
+    applyArt(label);
   }
 
   /**
@@ -253,8 +254,6 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     notesEl.hidden = false;
     notesEl.open = false;
   }
-  playback.session.subscribe(applySession);
-  applySession(playback.session());
 
   // ── now-playing → artwork + feed name ────────────────────────────
   // The hero renders up to 320 CSS px (300 on desktop), so a retina screen
@@ -281,7 +280,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   /** True once the WebP rendition has been given up on for this URL. */
   let webpFailedFor = '';
 
-  function applyNow(now: NowPlaying | null): void {
+  function applyArt(now: NowPlayingLabel | null): void {
     const src = now ? httpsOnly(now.art) : '';
     feedEl.textContent = now?.feedName ?? '';
     if (src) {
@@ -298,8 +297,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
       clearArt();
     }
     updateAmbient(settings().ambientArt ? src : '');
-    // Artless feeds: collapse the stage so the title doesn't float in a void
-    // (yt-mode CSS re-shows the stage for the embedded video).
+    // Artless feeds: collapse the stage so the title doesn't float in a void.
     player.classList.toggle('no-art', !src);
   }
 
@@ -312,18 +310,23 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   // leave a broken image box.
   art.addEventListener('error', () => {
     if (!art.getAttribute('src')) return; // our own clearArt(), not a failure
-    const src = httpsOnly(nowPlaying()?.art);
+    const label = nowPlayingLabel(playing());
+    const src = httpsOnly(label?.art);
     if (src && artWebp.getAttribute('srcset')) {
       webpFailedFor = src;
-      applyNow(nowPlaying());
+      applyArt(label);
       return;
     }
     clearArt();
     player.classList.add('no-art');
   });
 
-  nowPlaying.subscribe(applyNow);
-  applyNow(nowPlaying());
+  // Artwork, title, notes and transport availability all come from the playing
+  // session now — one subscription instead of two that had to stay in sync.
+  // Subscribed here, below every `let` it reads, so the closure is never
+  // entered before its own state is initialised.
+  playing.subscribe(applyPlaying);
+  applyPlaying(playing());
 
   // ── queue badge ──────────────────────────────────────────────────
   queue.subscribe((q) => updateQueueCount(q.length));
@@ -333,20 +336,19 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   onEngine((e) => {
     switch (e.type) {
       case 'play':
-        playing = true;
+        iconShowsPlaying = true;
         setPlayIcon(true);
         player.classList.add('playing');
-        updateYtMode();
         break;
       case 'pause':
       case 'error':
-        playing = false;
+        iconShowsPlaying = false;
         setPlayIcon(false);
         player.classList.remove('playing');
         break;
       case 'timeupdate':
-        // The sheet stays rendered while dismissed (the YT embed lives in it),
-        // so guard explicitly rather than relying on it being hidden.
+        // The sheet is only ever visibility:hidden when dismissed, never
+        // display:none, so guard explicitly rather than relying on layout.
         if (document.hidden || !isOpen()) break;
         if (!wave.isScrubbing()) wave.setProgress(e.duration ? (e.current / e.duration) * 100 : 0);
         elTCur.textContent = fmtTime(e.current);
@@ -375,28 +377,27 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     lblSkipFwd.textContent = String(s.skipForward);
     speedSel.value = String(s.defaultSpeed);
     // Toggling the preference takes effect without waiting for a track change.
-    updateAmbient(s.ambientArt ? httpsOnly(nowPlaying()?.art) : '');
+    updateAmbient(s.ambientArt ? httpsOnly(nowPlayingLabel(playing())?.art) : '');
   }
   settings.subscribe(applySettings);
   applySettings(settings());
 
   // ── language → dynamic labels ────────────────────────────────────
   currentLang.subscribe(() => {
-    setPlayIcon(playing);
-    // The sleep control relabels itself (sleep-control.ts).
-    const s = playback.session();
-    if (s.currentIndex < 0) titleEl.textContent = t('pick_episode');
+    setPlayIcon(iconShowsPlaying);
+    // The sleep control relabels itself (sleep-control.ts). The title can be a
+    // localized "Episode N" placeholder, so re-derive it too.
+    applyPlaying(playing());
   });
 
   // ── open / close ─────────────────────────────────────────────────
-  // The closed sheet stays rendered (visibility:hidden, never display:none):
-  // #ytHost lives in here, and the YT embed fallback must keep playing — and
-  // be creatable — while the sheet is dismissed.
+  // The closed sheet stays rendered (visibility:hidden, never display:none) so
+  // the slide transition has something to animate in both directions.
   let lastFocus: HTMLElement | null = null;
 
   /**
-   * Real modal semantics without `display: none` (which would kill the YT
-   * embed). Marking everything *behind* the sheet inert takes it out of the tab
+   * Real modal semantics without `display: none`, which would restart the
+   * enter animation. Marking everything *behind* the sheet inert takes it out of the tab
    * order and the accessibility tree, so the platform provides the focus trap;
    * while dismissed the sheet itself is inert for the same reason.
    */

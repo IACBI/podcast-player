@@ -1,25 +1,31 @@
 /**
- * Playback controller — the single owner of the playback session: feed
- * loading (stale-while-revalidate), episode selection, source selection
- * (offline blob → direct URL → YouTube embed fallback), blob-URL lifecycle,
- * queue/auto-next, progress persistence and Media Session metadata.
+ * Playback controller — the seam between BROWSING a feed and PLAYING an
+ * episode. These were one object until they were split: a single `session`
+ * meant both "the feed on screen" and "the thing playing", so every navigation
+ * reached into the live transport. Opening any feed called `embedStop()`,
+ * `clearQueue()` and then `audio.load()` for that feed's last-played episode —
+ * which stops whatever is playing even with `autoplay: false`.
  *
- * INTERFACE CONTRACT (frozen in WP-0): the types below are consumed by the
- * podcast, now-playing and queue views. WP-D replaces the stub factory body
- * with the behavior-preserving port of the legacy screens/player.ts
- * (`git show ed59840:src/ui/screens/player.ts`) WITHOUT changing these types.
+ * The split:
+ *   - `session`  (here)                — the browsed feed: list, sort, filter,
+ *                                        downloads, status. Never touches audio.
+ *   - `playing`  (player/session.ts)   — the loaded episode and the feed it
+ *                                        belongs to. Written only by playEpisode
+ *                                        and friends; owns prev/next/auto-next.
+ *
+ * `session.currentIndex` / `currentTrackId` are derived: they point at the
+ * playing episode's row only while the browsed feed IS the playing feed, so the
+ * list can still highlight it without owning it.
  */
 
 import type { Episode, FeedMeta, FeedRequest, ResolvedFeed } from '../feeds/types';
 import { signal, type Signal } from '../state/signals';
 import { resolveFeed } from '../feeds/resolve';
+import { feedIdOf, requestFromFeedId } from '../feeds/feed-id';
 import { t, currentLang } from '../i18n';
 import { httpsOnly } from '../lib/safe';
 import {
   audio,
-  embedStop,
-  handleEmbedState,
-  isUsingEmbed,
   onEngine,
   pbCurrent,
   pbDuration,
@@ -27,28 +33,20 @@ import {
   pbPaused,
   pbPlay,
   pbSeekTo,
-  pbSetRate,
-  setUsingEmbed,
 } from '../player/engine';
 import { downloadEpisode } from '../player/downloads';
 import { downloadOffline, offlineAudioUrl, removeDownload } from '../player/offline';
 import { getCachedFeed, putCachedFeed, putResume, listDownloads } from '../storage/db';
-import { setMediaMetadata, setMediaPosition } from '../player/media-session';
+import { setMediaMetadata, setMediaPosition, setPlaybackState } from '../player/media-session';
 import { getLastPlayed, getProgress, setLastPlayed, setProgress } from '../storage/progress';
-import { nowPlaying } from '../state/now-playing';
-import { clearQueue, dequeueNext, enqueue, queuePosition, removeFromQueue } from '../state/queue';
+import { playing, nowPlayingLabel, type PlayingSession } from '../player/session';
+import { dequeueNext, enqueue, queuePosition, removeFromQueue, type QueueItem } from '../state/queue';
 import { settings } from '../state/settings';
-import {
-  ensureEmbed,
-  getEmbed,
-  onEmbedError,
-  onEmbedStateChange,
-  ytPlaylistIds,
-} from '../youtube/embed';
-import { ytServiceAudioUrl } from '../youtube/piped';
+import { refreshSubscription } from '../storage/subscriptions';
+import { ytServiceAudioUrl } from '../youtube/service';
 import { consumeSleepAtEpisodeEnd } from '../player/sleep-timer';
 import { PRIVATE_FEED_ERROR } from '../feeds/credential-url';
-import { API_BASE, svcJson } from '../feeds/proxy-chain';
+import { API_BASE, PROXIES_DISABLED_ERROR, svcJson } from '../feeds/proxy-chain';
 import { toast } from './toast';
 
 export interface PlaybackStatus {
@@ -65,12 +63,14 @@ export interface PlaybackSession {
   episodes: Episode[];
   /** Episodes after sort + text filter — indexes below point into this. */
   filtered: Episode[];
-  /** Index of the loaded episode in `filtered`, -1 when none. */
+  /** Index of the PLAYING episode in `filtered`, -1 when it is another feed's. */
   currentIndex: number;
   currentTrackId: string | null;
   isYT: boolean;
-  /** True when only the latest ~15 items could be listed (YT Atom fallback). */
+  /** True when the list is only part of the show's archive. */
   limited: boolean;
+  /** Episodes the source says exist in total, when it says. */
+  total?: number;
   sortAsc: boolean;
   filter: string;
   downloadedIds: ReadonlySet<string>;
@@ -78,10 +78,19 @@ export interface PlaybackSession {
 }
 
 export interface PlaybackController {
-  /** Reactive session snapshot — views subscribe and re-render from this. */
+  /** Reactive browse snapshot — the feed views subscribe and render from this. */
   readonly session: Signal<PlaybackSession>;
-  /** Load a feed (SWR: cached copy paints instantly, network refreshes). */
+  /** Reactive playing snapshot — the transport surfaces render from this. */
+  readonly playing: Signal<PlayingSession | null>;
+  /** Load a feed for browsing (SWR). Never interrupts playback. */
   openFeed(req: FeedRequest): void;
+  /**
+   * Explicit "continue where I left off": loads (without playing) the next
+   * opened feed's last-played episode. Browsing deliberately no longer does
+   * this on its own — call it from the Home continue rail and the resume
+   * shortcut, the two places the user actually asked to resume.
+   */
+  resumeLastPlayed(): void;
   /** Retry the last failed openFeed. */
   retry(): void;
   /** Load + (optionally) play an episode by its index in `filtered`. */
@@ -96,9 +105,7 @@ export interface PlaybackController {
   toggleQueued(idx: number): void;
   /** Download an episode offline, or remove the downloaded copy on 2nd tap. */
   downloadToggle(idx: number): Promise<void>;
-  /** Title lookup for queue rows (falls back to a localized placeholder). */
-  episodeTitle(id: string): string;
-  /** Stop playback and clear the session. */
+  /** Stop playback and clear the playing session (the browsed feed stays). */
   reset(): void;
 }
 
@@ -112,6 +119,7 @@ export function emptySession(): PlaybackSession {
     currentTrackId: null,
     isYT: false,
     limited: false,
+    total: 0,
     sortAsc: true,
     filter: '',
     downloadedIds: new Set(),
@@ -120,60 +128,83 @@ export function emptySession(): PlaybackSession {
 }
 
 /**
- * The real playback controller — a behaviour-preserving port of the legacy
- * combined player screen (`src/ui/screens/player.ts`), stripped of all view
- * concerns. Everything the views need to render lives in the `session` signal;
- * everything else (blob-URL lifecycle, abort controllers, embed notice) is
- * private closure state.
+ * Feed order for the list: chronological when the feed actually carries dates,
+ * otherwise the source order (which every source we use hands over newest-first).
+ *
+ * The threshold matters. `some()` was enough to switch to date sorting, so a
+ * feed where only a handful of items are dated sorted every undated one as
+ * epoch 0 and scattered them to one end. YouTube listings are exactly that
+ * shape: the full list comes from Innertube, which reports only relative ages,
+ * and absolute dates are merged in for the few items the Atom feed still
+ * covers. A majority rule keeps RSS (fully dated) chronological and leaves
+ * those listings in the order YouTube itself returned them.
  */
+function sortEpisodes(eps: readonly Episode[], sortAsc: boolean): Episode[] {
+  const dated = eps.reduce((n, e) => n + (e.releaseDate ? 1 : 0), 0);
+  const sorted =
+    dated * 2 > eps.length
+      ? eps.slice().sort((a, b) => +new Date(a.releaseDate || 0) - +new Date(b.releaseDate || 0))
+      : eps.slice().reverse(); // newest-first source order → oldest-first
+  if (!sortAsc) sorted.reverse();
+  return sorted;
+}
+
 export function createPlaybackController(): PlaybackController {
   const session = signal<PlaybackSession>(emptySession());
 
   // ── private, non-reactive state ──────────────────────────────────
+  /** Aborts feed LOADING only. Never cancels an in-flight audio resolution. */
   let loadAbort: AbortController | null = null;
+  /** Aborts the PLAYING track's source resolution. */
+  let playAbort: AbortController | null = null;
   let currentBlobUrl: string | null = null;
-  let embedNoticeShown = false;
+  /** One-shot: consumed by the next feed that paints. See resumeLastPlayed. */
+  let resumeOnPaint = false;
 
   // ── session helpers ──────────────────────────────────────────────
   const patch = (p: Partial<PlaybackSession>): void => session.update((s) => ({ ...s, ...p }));
   /** Force a re-emit (list rows read queue/progress/settings out of band). */
   const bump = (): void => session.update((s) => ({ ...s }));
 
-  function okStatus(count: number, limited: boolean): PlaybackStatus {
-    return {
-      kind: 'ok',
-      message: t('status_ok', count) + (limited ? ' · ' + t('yt_limit_note') : ''),
-    };
+  /**
+   * "41 episodes ✓ · of 2676 in the archive" when the source admits it handed
+   * back only part of the show, so a truncated list never reads as the whole.
+   */
+  function okStatus(count: number, limited: boolean, total?: number): PlaybackStatus {
+    const note = !limited ? '' : total ? t('limit_of_total', total) : t('limit_note');
+    return { kind: 'ok', message: t('status_ok', count) + (note ? ' · ' + note : '') };
   }
 
-  function feedIdOf(req: FeedRequest): string {
-    switch (req.kind) {
-      case 'itunes':
-        return req.id;
-      case 'rss':
-        return 'rss:' + req.url;
-      case 'yt':
-        return 'yt:' + req.info.type + ':' + req.info.id;
-    }
+  /**
+   * Re-derive where the playing episode sits in the browsed list. -1 whenever
+   * the user is looking at a different feed than the one playing.
+   */
+  function markPlayingRow(): void {
+    const s = session();
+    const p = playing();
+    const onThisFeed = !!p && !!s.meta && p.feedId === s.meta.id;
+    const currentTrackId = onThisFeed ? (p as PlayingSession).trackId : null;
+    const currentIndex = currentTrackId
+      ? s.filtered.findIndex((e) => String(e.trackId) === currentTrackId)
+      : -1;
+    if (s.currentTrackId === currentTrackId && s.currentIndex === currentIndex) return;
+    patch({ currentIndex, currentTrackId });
   }
 
   // ── feed opening (stale-while-revalidate) ────────────────────────
   function openFeed(req: FeedRequest): void {
     const cur = session();
-    // Re-entering the already-loaded feed (e.g. via the mini player): keep it
-    // — reloading would interrupt playback.
-    if (cur.meta?.id === feedIdOf(req) && cur.episodes.length) return;
+    const feedId = feedIdOf(req);
+    // Re-entering the already-loaded feed: keep the list (and its scroll state).
+    if (cur.meta?.id === feedId && cur.episodes.length) return;
 
     loadAbort?.abort();
     loadAbort = new AbortController();
     const sig = loadAbort.signal;
     const timeout = setTimeout(() => loadAbort?.abort(), req.kind === 'itunes' ? 10000 : 25000);
 
-    embedStop();
-    setUsingEmbed(false);
-    clearQueue();
-
-    // Fresh session for this feed, preserving only the sticky filter text.
+    // NOTE: no embedStop(), no clearQueue(), no audio.src write here. Browsing a
+    // feed is not a playback action — that conflation is the bug this split fixes.
     session.set({
       ...emptySession(),
       req,
@@ -183,7 +214,6 @@ export function createPlaybackController(): PlaybackController {
       status: { kind: 'loading', message: t('status_loading') },
     });
 
-    const feedId = feedIdOf(req);
     let painted = false; // true once a list (cache or network) is on screen
 
     const applyResolved = (resolved: ResolvedFeed): void => {
@@ -192,46 +222,45 @@ export function createPlaybackController(): PlaybackController {
 
       const S = settings();
       const sortAsc = S.defaultSort === 'asc';
-      const hasDates = eps.some((e) => e.releaseDate);
-      const sorted = hasDates
-        ? eps.slice().sort((a, b) => +new Date(a.releaseDate || 0) - +new Date(b.releaseDate || 0))
-        : eps.slice().reverse(); // newest-first source order → oldest-first
-      if (!sortAsc) sorted.reverse();
+      const sorted = sortEpisodes(eps, sortAsc);
 
       const q = session().filter.trim().toLowerCase();
       const filtered = q
         ? sorted.filter((e) => (e.trackName || '').toLowerCase().includes(q))
         : sorted.slice();
 
-      const trackId = session().currentTrackId;
-      const currentIndex = trackId != null
-        ? filtered.findIndex((e) => String(e.trackId) === trackId)
-        : -1;
-
       patch({
         meta: resolved.meta,
         limited: resolved.limited,
+        total: resolved.total ?? 0,
         episodes: sorted,
         filtered,
-        currentIndex,
         sortAsc,
-        status: okStatus(sorted.length, resolved.limited),
+        status: okStatus(sorted.length, resolved.limited, resolved.total),
       });
+      markPlayingRow();
+      // A refresh of the feed that is playing picks up new items and background
+      // title fills, so prev/next keep walking a current list.
+      adoptRefreshedEpisodes(resolved.meta, filtered);
 
-      if (painted) return; // refresh under an already-visible list — done above
-      painted = true;
-      audio.playbackRate = S.defaultSpeed;
+      // OPML imports carry only a title, so backfill the real artwork/author
+      // for a feed the user is already subscribed to.
+      refreshSubscription(resolved.meta);
 
-      const lastId = getLastPlayed(resolved.meta.id);
-      if (lastId) {
-        const idx = filtered.findIndex((e) => String(e.trackId) === lastId);
+      // Never steals the transport from something already playing.
+      if (resumeOnPaint && !playing()) {
+        resumeOnPaint = false;
+        const lastId = getLastPlayed(resolved.meta.id);
+        const idx = lastId ? filtered.findIndex((e) => String(e.trackId) === lastId) : -1;
         if (idx >= 0) playEpisode(idx, false);
       }
+
+      painted = true;
     };
 
     void (async () => {
       const dl = new Set((await listDownloads()).map((d) => d.id));
-      patch({ downloadedIds: dl });
+      if (!sig.aborted) patch({ downloadedIds: dl });
 
       // Paint the cached copy instantly, then refresh from the network.
       const cached = await getCachedFeed(feedId);
@@ -244,11 +273,7 @@ export function createPlaybackController(): PlaybackController {
       }
 
       try {
-        const resolved = await resolveFeed(req, {
-          signal: sig,
-          ytVideoTitle: t('yt_video'),
-          playlistIds: ytPlaylistIds,
-        });
+        const resolved = await resolveFeed(req, { signal: sig, ytVideoTitle: t('yt_video') });
         clearTimeout(timeout);
         if (sig.aborted) return;
         applyResolved(resolved);
@@ -266,10 +291,25 @@ export function createPlaybackController(): PlaybackController {
         const message =
           err.message === PRIVATE_FEED_ERROR
             ? t('private_feed_err')
-            : t('status_err') + (err.message || String(err));
+            : err.message === PROXIES_DISABLED_ERROR
+              ? t('proxies_disabled_err')
+              : t('status_err') + (err.message || String(err));
         patch({ status: { kind: 'error', message } });
       }
     })();
+  }
+
+  /**
+   * A refreshed copy of the PLAYING feed replaces its episode snapshot, as long
+   * as the playing track is still in it (so the index can be remapped). Any
+   * other feed's refresh is ignored — that is the whole point of the split.
+   */
+  function adoptRefreshedEpisodes(meta: FeedMeta, episodes: Episode[]): void {
+    const p = playing();
+    if (!p || p.feedId !== meta.id) return;
+    const index = episodes.findIndex((e) => String(e.trackId) === p.trackId);
+    if (index < 0) return;
+    playing.set({ ...p, meta, episodes, index });
   }
 
   /**
@@ -287,7 +327,12 @@ export function createPlaybackController(): PlaybackController {
     let i = 0;
     let since = 0;
     const reRender = (): void => {
-      if (session().isYT && !sig.aborted) bump();
+      if (session().isYT && !sig.aborted) {
+        bump();
+        // The playing row may be one of the filled titles.
+        const p = playing();
+        if (p) playing.set({ ...p });
+      }
     };
     const worker = async (): Promise<void> => {
       while (i < targets.length) {
@@ -318,51 +363,71 @@ export function createPlaybackController(): PlaybackController {
   }
 
   // ── playback ─────────────────────────────────────────────────────
+
+  /** Play from the browsed list (the only entry point the feed view needs). */
   function playEpisode(idx: number, autoplay = false): void {
     const s = session();
-    if (idx < 0 || idx >= s.filtered.length) return;
-    const ep = s.filtered[idx];
+    if (idx < 0 || idx >= s.filtered.length || !s.meta) return;
+    start(
+      {
+        feedId: s.meta.id,
+        meta: s.meta,
+        // Snapshot of what the user is looking at: "next" means the next row.
+        episodes: s.filtered.slice(),
+        index: idx,
+        trackId: String(s.filtered[idx]?.trackId ?? ''),
+        isYT: s.isYT,
+      },
+      autoplay,
+    );
+  }
+
+  /** Move within the PLAYING feed — independent of what is on screen. */
+  function playAt(p: PlayingSession, index: number, autoplay: boolean): void {
+    const ep = p.episodes[index];
     if (!ep) return;
-    const id = String(ep.trackId);
-    const meta = s.meta;
+    start({ ...p, index, trackId: String(ep.trackId) }, autoplay);
+  }
 
-    cancelEmbedRescue();
-    patch({ currentIndex: idx, currentTrackId: id });
+  /**
+   * The single place that writes the playing session and touches the transport.
+   */
+  function start(next: PlayingSession, autoplay: boolean): void {
+    const ep = next.episodes[next.index];
+    if (!ep || !next.trackId) return;
 
-    if (s.isYT) {
-      void ytResolveAndPlay(ep, id, autoplay);
+    playAbort?.abort();
+    playAbort = new AbortController();
+    playing.set(next);
+    markPlayingRow();
+
+    if (next.isYT) {
+      void ytResolveAndPlay(ep, next.trackId, autoplay);
     } else {
-      void startAudioPreferOffline(ep.episodeUrl || '', id, autoplay);
+      void startAudioPreferOffline(ep.episodeUrl || '', next.trackId, autoplay);
     }
 
-    // Episode artwork wins over the feed cover on both surfaces — the OS used
-    // to get only the feed art while the sheet showed the episode's own.
-    const art = httpsOnly(ep.art) || httpsOnly(meta?.art);
+    const label = nowPlayingLabel(next);
     setMediaMetadata({
-      title: ep.trackName || '',
-      artist: meta?.artist || '',
-      album: meta?.name || '',
-      artworkUrl: art,
-    });
-    nowPlaying.set({
-      title: ep.trackName || t('ep_fallback', idx + 1),
-      feedName: meta?.name || '',
-      art,
+      title: label?.title ?? '',
+      artist: next.meta.artist || '',
+      album: next.meta.name || '',
+      artworkUrl: label?.art ?? '',
     });
 
-    if (meta) {
-      setLastPlayed(meta.id, id);
-      // Small projection for Home, so it never has to deserialize a whole
-      // archive just to render one row.
-      void putResume({ id: meta.id, meta, episode: ep, updatedAt: Date.now() });
-    }
+    setLastPlayed(next.feedId, next.trackId);
+    // Small projection for Home, so it never has to deserialize a whole archive
+    // just to render one row.
+    void putResume({ id: next.feedId, meta: next.meta, episode: ep, updatedAt: Date.now() });
     bump();
   }
 
   /** Play the downloaded copy when one exists, otherwise the stream URL. */
   async function startAudioPreferOffline(src: string, id: string, autoplay: boolean): Promise<void> {
-    const local = session().downloadedIds.has(id) ? await offlineAudioUrl(id) : null;
-    if (session().currentTrackId !== id) {
+    // Asks storage directly rather than the browsed feed's `downloadedIds`,
+    // which is the wrong set for a queued episode from another feed.
+    const local = await offlineAudioUrl(id);
+    if (playing()?.trackId !== id) {
       if (local) URL.revokeObjectURL(local); // user moved on during the lookup
       return;
     }
@@ -372,8 +437,7 @@ export function createPlaybackController(): PlaybackController {
   /**
    * Guard for the app's only media sink. A YouTube audio URL comes from
    * whichever third-party Piped instance answered first, so it is no more
-   * trusted than a feed enclosure — yet this was the one sink `httpsOnly` never
-   * covered. Our own offline copies are blob: URLs and stay allowed.
+   * trusted than a feed enclosure. Our own offline copies are blob: URLs.
    *
    * The API base is the deliberate exception: in local dev the worker is plain
    * http on loopback, which is also why the CSP lists it under media-src.
@@ -393,8 +457,6 @@ export function createPlaybackController(): PlaybackController {
       patch({ status: { kind: 'error', message: t('audio_err') } });
       return;
     }
-    embedStop();
-    setUsingEmbed(false);
     if (currentBlobUrl && currentBlobUrl !== safe) {
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;
@@ -423,165 +485,72 @@ export function createPlaybackController(): PlaybackController {
 
   async function ytResolveAndPlay(ep: Episode, id: string, autoplay: boolean): Promise<void> {
     audio.pause();
+    const sig = playAbort?.signal;
     // Downloaded copy wins — no network resolution needed.
-    if (session().downloadedIds.has(id)) {
-      const local = await offlineAudioUrl(id);
-      if (!session().isYT || session().currentTrackId !== id) {
-        if (local) URL.revokeObjectURL(local);
-        return;
-      }
-      if (local) {
-        startAudio(local, id, autoplay);
-        patch({ status: okStatus(session().episodes.length, session().limited) });
-        return;
-      }
+    const local = await offlineAudioUrl(id);
+    if (playing()?.trackId !== id) {
+      if (local) URL.revokeObjectURL(local);
+      return;
     }
+    if (local) {
+      startAudio(local, id, autoplay);
+      patch({ status: okStatus(session().episodes.length, session().limited, session().total) });
+      return;
+    }
+
     patch({ status: { kind: 'loading', message: t('status_loading') } });
     let url: string | null = null;
     try {
-      url = await ytServiceAudioUrl(ep.ytId ?? '', loadAbort?.signal);
+      url = await ytServiceAudioUrl(ep.ytId ?? '', sig);
     } catch {
       url = null;
     }
-    if (!session().isYT || session().currentTrackId !== id) return; // user moved on
+    if (playing()?.trackId !== id) return; // user moved on
     if (url) {
       ep.episodeUrl = url; // real media URL → download works too
       startAudio(url, id, autoplay);
-      patch({ status: okStatus(session().episodes.length, session().limited) });
-    } else {
-      setUsingEmbed(true);
-      // The iframe can't keep playing on a locked phone — be upfront about it.
-      if (!embedNoticeShown) {
-        embedNoticeShown = true;
-        toast(t('yt_embed_bg'), 'info');
-      }
-      await embedLoadEp(ep, autoplay);
-      // …but keep hunting for a real audio stream in the background: the
-      // instant one resolves we hot-swap to <audio>, which DOES keep playing
-      // with the screen locked (plus lock-screen Media Session controls).
-      scheduleEmbedRescue(ep, id);
-    }
-  }
-
-  // ── embed → audio background rescue ──────────────────────────────
-  let rescueTimer: ReturnType<typeof setTimeout> | null = null;
-  let rescueTry = 0;
-  const RESCUE_DELAYS = [8000, 30000, 60000, 120000, 180000];
-
-  function cancelEmbedRescue(): void {
-    if (rescueTimer) {
-      clearTimeout(rescueTimer);
-      rescueTimer = null;
-    }
-    rescueTry = 0;
-  }
-
-  /** Retry audio resolution while the embed fallback plays; on success swap
-   *  to <audio> at the embed's current position, preserving play state. */
-  function scheduleEmbedRescue(ep: Episode, id: string): void {
-    cancelEmbedRescue();
-    const stillOnEmbed = (): boolean =>
-      session().isYT && session().currentTrackId === id && isUsingEmbed();
-    const attempt = async (): Promise<void> => {
-      rescueTimer = null;
-      if (!stillOnEmbed()) return;
-      let url: string | null = null;
-      try {
-        url = await ytServiceAudioUrl(ep.ytId ?? '', loadAbort?.signal);
-      } catch {
-        url = null;
-      }
-      if (!stillOnEmbed()) return;
-      if (url) {
-        ep.episodeUrl = url; // real media URL → download works too
-        const pos = pbCurrent();
-        const wasPlaying = !pbPaused();
-        startAudio(url, id, wasPlaying);
-        // Land where the embed was (applyPrefs' saved-progress seek targets
-        // roughly the same second; this exact seek wins on loadedmetadata).
-        const seekBack = (): void => {
-          if (pos > 0 && isFinite(audio.duration) && pos < audio.duration - 2) {
-            audio.currentTime = pos;
-          }
-        };
-        if (audio.readyState >= 1) seekBack();
-        else audio.addEventListener('loadedmetadata', seekBack, { once: true });
-        return;
-      }
-      if (rescueTry < RESCUE_DELAYS.length - 1) {
-        rescueTry++;
-        rescueTimer = setTimeout(() => void attempt(), RESCUE_DELAYS[rescueTry]);
-      }
-    };
-    rescueTimer = setTimeout(() => void attempt(), RESCUE_DELAYS[0]);
-  }
-
-  async function embedLoadEp(ep: Episode, autoplay: boolean): Promise<void> {
-    patch({ status: { kind: 'loading', message: t('status_loading') } });
-    try {
-      await ensureEmbed();
-    } catch {
-      patch({ status: { kind: 'error', message: t('yt_embed_blocked') } });
+      patch({ status: okStatus(session().episodes.length, session().limited, session().total) });
       return;
     }
-    if (!session().isYT || session().currentTrackId !== String(ep.trackId)) return;
-    const S = settings();
-    const savedPos = S.resumePos && getProgress(String(ep.trackId)) > 5 ? getProgress(String(ep.trackId)) : 0;
-    const p = getEmbed();
-    if (!p) return;
-    try {
-      const opts = { videoId: ep.ytId ?? '', startSeconds: savedPos, suggestedQuality: 'small' };
-      if (autoplay) p.loadVideoById(opts);
-      else p.cueVideoById(opts);
-      try {
-        p.setPlaybackQuality('small');
-      } catch {
-        /* older API */
-      }
-      pbSetRate(S.defaultSpeed);
-    } catch {
-      patch({ status: { kind: 'error', message: t('yt_embed_blocked') } });
-      return;
-    }
-    patch({ status: okStatus(session().episodes.length, session().limited) });
+    // No stream. There used to be a `youtube-nocookie` iframe fallback here,
+    // which played ads and stopped the moment the screen locked — the two
+    // things this app promises YouTube listeners it will not do. Saying so is
+    // the honest outcome; see player/engine.ts for the measured trade-off.
+    patch({ status: { kind: 'error', message: t('yt_no_stream') } });
+    toast(t('yt_no_stream'), 'error');
   }
 
   function togglePlay(): void {
-    const s = session();
-    if (!s.isYT && !audio.src) return;
-    if (s.currentTrackId == null) return;
+    if (!playing() || !audio.src) return;
     if (pbPaused()) pbPlay();
     else pbPause();
   }
 
   function seekRel(seconds: number): void {
+    if (!playing()) return;
     const dur = pbDuration();
-    if (!session().isYT && !audio.src) return;
     if (!Number.isFinite(dur) || !dur) return;
     pbSeekTo(Math.max(0, Math.min(pbCurrent() + seconds, dur)));
   }
 
   function prev(): void {
-    const s = session();
-    if (s.currentIndex > 0) playEpisode(s.currentIndex - 1, !pbPaused());
+    const p = playing();
+    if (p && p.index > 0) playAt(p, p.index - 1, !pbPaused());
   }
   function next(): void {
-    const s = session();
-    if (s.currentIndex >= 0 && s.currentIndex < s.filtered.length - 1) {
-      playEpisode(s.currentIndex + 1, !pbPaused());
-    }
+    const p = playing();
+    if (p && p.index < p.episodes.length - 1) playAt(p, p.index + 1, !pbPaused());
   }
 
   // ── sort & filter ────────────────────────────────────────────────
   function toggleSort(): void {
     const s = session();
-    const sortAsc = !s.sortAsc;
-    const episodes = s.episodes.slice().reverse();
-    const filtered = s.filtered.slice().reverse();
-    const currentIndex = s.currentTrackId != null
-      ? filtered.findIndex((e) => String(e.trackId) === s.currentTrackId)
-      : -1;
-    patch({ sortAsc, episodes, filtered, currentIndex });
+    patch({
+      sortAsc: !s.sortAsc,
+      episodes: s.episodes.slice().reverse(),
+      filtered: s.filtered.slice().reverse(),
+    });
+    markPlayingRow();
   }
 
   function setFilter(q: string): void {
@@ -590,24 +559,65 @@ export function createPlaybackController(): PlaybackController {
     const filtered = query
       ? s.episodes.filter((e) => (e.trackName || '').toLowerCase().includes(query))
       : s.episodes.slice();
-    const currentIndex = s.currentTrackId != null
-      ? filtered.findIndex((e) => String(e.trackId) === s.currentTrackId)
-      : -1;
-    patch({ filter: q, filtered, currentIndex });
+    patch({ filter: q, filtered });
+    markPlayingRow();
   }
 
   // ── queue ────────────────────────────────────────────────────────
   function toggleQueued(idx: number): void {
-    const ep = session().filtered[idx];
-    if (!ep) return;
-    const id = String(ep.trackId);
-    if (queuePosition(id)) {
-      removeFromQueue(id);
+    const s = session();
+    const ep = s.filtered[idx];
+    if (!ep || !s.meta) return;
+    const ref = { feedId: s.meta.id, trackId: String(ep.trackId) };
+    if (queuePosition(ref)) {
+      removeFromQueue(ref);
     } else {
-      enqueue(id);
+      const item: QueueItem = {
+        ...ref,
+        title: ep.trackName || t('ep_fallback', idx + 1),
+        feedName: s.meta.name || '',
+      };
+      enqueue(item);
       toast(t('queued'));
     }
     bump();
+  }
+
+  /**
+   * Play a queued episode, which may belong to a feed that is neither playing
+   * nor on screen: the playing session is rebuilt from the cached feed, or from
+   * the network when it was never cached.
+   */
+  async function playQueueItem(item: QueueItem): Promise<void> {
+    const fromList = (meta: FeedMeta, episodes: Episode[], isYT: boolean): boolean => {
+      const index = episodes.findIndex((e) => String(e.trackId) === item.trackId);
+      if (index < 0) return false;
+      start({ feedId: meta.id, meta, episodes, index, trackId: item.trackId, isYT }, true);
+      return true;
+    };
+
+    const p = playing();
+    if (p && p.feedId === item.feedId && fromList(p.meta, p.episodes, p.isYT)) return;
+    const s = session();
+    if (s.meta && s.meta.id === item.feedId && fromList(s.meta, s.filtered, s.isYT)) return;
+
+    const sortAsc = settings().defaultSort === 'asc';
+    const isYT = item.feedId.startsWith('yt:');
+    const cached = await getCachedFeed(item.feedId);
+    if (cached && fromList(cached.feed.meta, sortEpisodes(cached.feed.episodes, sortAsc), isYT)) {
+      return;
+    }
+
+    const req = requestFromFeedId(item.feedId);
+    if (!req) return;
+    try {
+      const resolved = await resolveFeed(req, { ytVideoTitle: t('yt_video') });
+      void putCachedFeed(resolved);
+      if (fromList(resolved.meta, sortEpisodes(resolved.episodes, sortAsc), req.kind === 'yt')) return;
+    } catch {
+      /* reported below */
+    }
+    toast(t('ep_not_found'), 'error');
   }
 
   // ── downloads ────────────────────────────────────────────────────
@@ -646,29 +656,22 @@ export function createPlaybackController(): PlaybackController {
       bump();
       return;
     }
-    // CORS-blocked CDN etc. → legacy browser file download still works.
+    // CORS-blocked CDN etc. → hand the URL to the browser instead.
     const fb = await downloadEpisode(ep, s.isYT);
-    toast(fb === 'ok' ? t('dl_fallback_file') : t('dl_not_found'), fb === 'ok' ? 'info' : 'error');
+    toast(fb === 'opened' ? t('dl_opened_tab') : t('dl_not_found'), fb === 'opened' ? 'info' : 'error');
     bump();
   }
 
-  /**
-   * episodeTitle is called once per queue row, and the queue view re-renders on
-   * every mutation and language change — a linear scan made that
-   * O(queue × episodes). Index lazily, rebuilding only when the array changes.
-   */
-  let titleIndex = new Map<string, { title: string; i: number }>();
-  let titleIndexFor: unknown = null;
-
-  function episodeTitle(id: string): string {
-    const eps = session().episodes;
-    if (titleIndexFor !== eps) {
-      titleIndex = new Map();
-      eps.forEach((e, i) => titleIndex.set(String(e.trackId), { title: e.trackName, i }));
-      titleIndexFor = eps;
+  function resumeLastPlayed(): void {
+    resumeOnPaint = true;
+    // Already on the feed (openFeed short-circuits), so act on what is painted.
+    const s = session();
+    if (s.meta && s.filtered.length && !playing()) {
+      resumeOnPaint = false;
+      const lastId = getLastPlayed(s.meta.id);
+      const idx = lastId ? s.filtered.findIndex((e) => String(e.trackId) === lastId) : -1;
+      if (idx >= 0) playEpisode(idx, false);
     }
-    const hit = titleIndex.get(id);
-    return hit ? hit.title || t('ep_fallback', hit.i + 1) : '';
   }
 
   function retry(): void {
@@ -677,83 +680,62 @@ export function createPlaybackController(): PlaybackController {
   }
 
   function reset(): void {
-    cancelEmbedRescue();
+    playAbort?.abort();
     audio.pause();
     if (currentBlobUrl) {
       audio.removeAttribute('src');
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;
     }
-    nowPlaying.set(null);
-    embedStop();
-    setUsingEmbed(false);
-    loadAbort?.abort();
+    playing.set(null);
+    setPlaybackState('none');
     document.body.classList.remove('is-playing');
-    session.set(emptySession());
+    markPlayingRow();
   }
 
   // ── engine wiring ────────────────────────────────────────────────
   onEngine((e) => {
     switch (e.type) {
-      case 'play': {
+      case 'play':
         document.body.classList.add('is-playing');
-        // Fill title from embed video data when missing (single-video feeds).
-        if (isUsingEmbed()) {
-          try {
-            const s = session();
-            const ep = s.currentIndex >= 0 ? s.filtered[s.currentIndex] : undefined;
-            const d = getEmbed()?.getVideoData?.();
-            if (ep && !ep.trackName && d?.title) {
-              ep.trackName = d.title;
-              const np = nowPlaying();
-              if (np) nowPlaying.set({ ...np, title: d.title });
-              bump();
-            }
-          } catch {
-            /* embed data unavailable */
-          }
-        }
+        setPlaybackState('playing');
         break;
-      }
       case 'pause':
         document.body.classList.remove('is-playing');
+        setPlaybackState('paused');
         break;
       case 'ended': {
         // "Sleep at end of episode" must win over both the queue and auto-next.
         if (consumeSleepAtEpisodeEnd()) break;
-        const s = session();
-        // Queue wins over plain list order.
-        const nextQueued = dequeueNext(s.currentTrackId ?? undefined);
+        const p = playing();
+        if (!p) break;
+        // Queue wins over plain list order, and may point at another feed.
+        const nextQueued = dequeueNext({ feedId: p.feedId, trackId: p.trackId });
         if (nextQueued) {
-          const qi = s.filtered.findIndex((x) => String(x.trackId) === nextQueued);
-          if (qi >= 0) {
-            playEpisode(qi, true);
-            break;
-          }
+          void playQueueItem(nextQueued);
+          break;
         }
-        if (settings().autoNext && s.currentIndex < s.filtered.length - 1) {
-          playEpisode(s.currentIndex + 1, true);
+        if (settings().autoNext && p.index < p.episodes.length - 1) {
+          playAt(p, p.index + 1, true);
         }
         break;
       }
       case 'timeupdate': {
-        // Progress persistence only — the visual scrubber is WP-E's job.
-        const s = session();
-        const ep = s.currentIndex >= 0 ? s.filtered[s.currentIndex] : undefined;
-        if (ep && e.current > 5) setProgress(String(ep.trackId), e.current);
-        setMediaPosition(e.current, e.duration, settings().defaultSpeed);
+        const p = playing();
+        if (p && e.current > 5) setProgress(p.trackId, e.current);
+        // The real rate, not the stored preference: a speed change applied to
+        // the element must move the lock-screen bar with it.
+        setMediaPosition(e.current, e.duration, audio.playbackRate);
         break;
       }
       case 'error':
         patch({ status: { kind: 'error', message: t('audio_err') } });
+        setPlaybackState('paused');
         document.body.classList.remove('is-playing');
         break;
     }
   });
-  onEmbedStateChange(handleEmbedState);
-  onEmbedError(() => patch({ status: { kind: 'error', message: t('yt_embed_blocked') } }));
-
-  // ── global keyboard shortcuts (feed view / Now Playing sheet) ─────
+  // ── global keyboard shortcuts ─────────────────────────────────────
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return; // scrubber/rows already handled this key
     const target = e.target as HTMLElement;
@@ -761,8 +743,9 @@ export function createPlaybackController(): PlaybackController {
     if (tag === 'input' || tag === 'select' || tag === 'textarea' || target.isContentEditable) return;
     // Space must activate a focused button (e.g. #npClose), not toggle playback.
     if (e.key === ' ' && target.closest('button, [role="button"], a')) return;
-    const sheetOpen = document.getElementById('npSheet')?.classList.contains('open');
-    if (!document.body.classList.contains('feed-open') && !sheetOpen) return;
+    // Transport keys follow what is PLAYING, so they keep working on Home,
+    // Search and Library — they used to require the feed view to be open.
+    if (!playing()) return;
     switch (e.key) {
       case ' ':
         e.preventDefault();
@@ -791,7 +774,7 @@ export function createPlaybackController(): PlaybackController {
   // re-rendered by the views' own currentLang subscription).
   currentLang.subscribe(() => {
     const s = session();
-    if (s.status.kind === 'ok') patch({ status: okStatus(s.episodes.length, s.limited) });
+    if (s.status.kind === 'ok') patch({ status: okStatus(s.episodes.length, s.limited, s.total) });
     else if (s.status.kind === 'loading') patch({ status: { kind: 'loading', message: t('status_loading') } });
   });
 
@@ -802,7 +785,9 @@ export function createPlaybackController(): PlaybackController {
 
   return {
     session,
+    playing,
     openFeed,
+    resumeLastPlayed,
     retry,
     playEpisode,
     next,
@@ -813,7 +798,6 @@ export function createPlaybackController(): PlaybackController {
     setFilter,
     toggleQueued,
     downloadToggle,
-    episodeTitle,
     reset,
   };
 }

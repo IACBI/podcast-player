@@ -5,9 +5,27 @@
  * proxy never blocks a load (legacy behavior preserved).
  */
 
+import { settings } from '../state/settings';
 import { carriesCredential, PRIVATE_FEED_ERROR } from './credential-url';
 
 export type ProxyFn = (url: string) => string;
+
+/**
+ * Thrown when the Worker could not answer and the third-party proxy fallback
+ * is switched off (the default). Recognised by the UI so it can explain the
+ * setting instead of showing a generic network failure.
+ */
+export const PROXIES_DISABLED_ERROR = 'proxies-disabled';
+
+/**
+ * True when the user has opted into the third-party CORS proxies. They are off
+ * by default: three operators are raced for every feed, so each of them learns
+ * what the user listens to, and whichever answers first decides what the app
+ * parses — enclosure URLs included.
+ */
+function publicProxiesAllowed(): boolean {
+  return settings().allowPublicProxies;
+}
 
 /** Public CORS proxies (feeds rarely send CORS headers themselves). */
 export const RSS_PROXIES: ProxyFn[] = [
@@ -76,6 +94,7 @@ export async function fetchTextProxied(
   // A credential-bearing feed URL must never reach a public proxy operator —
   // and all three are raced in parallel, so it would leak to three at once.
   if (guardCredentials && carriesCredential(url)) throw new Error(PRIVATE_FEED_ERROR);
+  if (!publicProxiesAllowed()) throw new Error(PROXIES_DISABLED_ERROR);
 
   const attempts = RSS_PROXIES.map((proxy) =>
     fetchWithTimeout(proxy(url), outerSignal, perTimeout)
@@ -105,31 +124,6 @@ export async function svcJson<T = unknown>(
   const res = await fetchWithTimeout(url, signal, perTimeout);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return (await res.json()) as T;
-}
-
-/**
- * Race a path across several instances; resolve {base, json} for the first
- * that passes `valid` (dead/empty instances are skipped).
- */
-export async function svcFirst<T>(
-  bases: readonly string[],
-  path: string,
-  signal: AbortSignal | undefined,
-  valid: (json: T) => boolean,
-): Promise<{ base: string; json: T }> {
-  if (signal?.aborted) throw abortError();
-  try {
-    return await Promise.any(
-      bases.map(async (base) => {
-        const json = await svcJson<T>(base + path, signal);
-        if (!valid(json)) throw new Error('invalid');
-        return { base, json };
-      }),
-    );
-  } catch {
-    if (signal?.aborted) throw abortError();
-    throw new Error('no instance');
-  }
 }
 
 /**
@@ -164,6 +158,7 @@ export async function itunesFetch<T = unknown>(url: string, signal?: AbortSignal
     return (await res.json()) as T;
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
+    if (!publicProxiesAllowed()) throw e;
     for (const proxy of RSS_PROXIES) {
       try {
         const res = await fetch(proxy(bust), {

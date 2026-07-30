@@ -1,4 +1,4 @@
-import { effect, type Signal } from '../state/signals';
+import { effect } from '../state/signals';
 import { currentLang, t, LANGS } from '../i18n';
 import type { LangKey } from '../i18n/types';
 
@@ -31,10 +31,3 @@ export function bindI18nDom(root: ParentNode = document): void {
   });
 }
 
-/** Keep a <select>'s value in sync with a signal (both directions). */
-export function bindSelect<T extends string>(sel: HTMLSelectElement, sig: Signal<T>): void {
-  effect(() => {
-    sel.value = sig();
-  });
-  sel.addEventListener('change', () => sig.set(sel.value as T));
-}

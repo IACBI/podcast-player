@@ -35,6 +35,215 @@ function absThumb(u: string): string {
   return u.startsWith('//') ? 'https:' + u : u;
 }
 
+export interface YtItem {
+  videoId: string;
+  title: string;
+  /** ISO date string; '' when unknown. */
+  published: string;
+  durationSec: number;
+  thumb: string;
+}
+
+export interface YtListing {
+  title: string;
+  author: string;
+  items: YtItem[];
+  /**
+   * True when more items exist than we could fetch. YouTube answers the first
+   * page from a datacenter IP but frequently 403s the continuation requests, so
+   * a listing is often a prefix of the channel rather than all of it — and the
+   * UI has to say so instead of presenting 60 of 500 as the whole show.
+   */
+  partial: boolean;
+}
+
+/** "11:00" | "1:02:03" → seconds. 0 when unparseable (live, upcoming, …). */
+function badgeDuration(text: string): number {
+  const parts = text.trim().split(':').map(Number);
+  if (!parts.length || parts.some((n) => !Number.isFinite(n))) return 0;
+  return parts.reduce((acc, n) => acc * 60 + n, 0);
+}
+
+/**
+ * Pull the fields we need out of one feed entry.
+ *
+ * Channel and playlist listings both come back as `LockupView` nodes now, whose
+ * useful parts are nested three levels deep and shaped for rendering rather
+ * than for data. Written defensively against `unknown` for the same reason
+ * `tubeSearch` is: these shapes change without notice, and one renamed field
+ * must degrade a single item rather than throw away the listing.
+ *
+ * Note what is NOT here: an upload date. The browse response carries only
+ * relative text ("1 hour ago"), and turning that into an ISO timestamp would be
+ * inventing precision YouTube did not give us. Absolute dates are merged in
+ * from the Atom feed by the caller, for the items it covers.
+ */
+function itemFromNode(node: unknown): YtItem | null {
+  const n = node as Record<string, any>;
+  const videoId = String(n?.content_id ?? n?.video_id ?? n?.id ?? '');
+  if (!/^[\w-]{11}$/.test(videoId)) return null;
+  if (n?.content_type && n.content_type !== 'VIDEO') return null;
+
+  const title = String(
+    n?.metadata?.title?.text ?? n?.title?.text ?? n?.title ?? '',
+  );
+
+  let durationSec = Number(n?.duration?.seconds ?? 0) || 0;
+  if (!durationSec) {
+    const overlays = (n?.content_image?.overlays ?? []) as Array<Record<string, any>>;
+    for (const o of overlays) {
+      for (const b of (o?.badges ?? []) as Array<Record<string, any>>) {
+        const d = badgeDuration(String(b?.text ?? ''));
+        if (d) {
+          durationSec = d;
+          break;
+        }
+      }
+      if (durationSec) break;
+    }
+  }
+
+  // The lockup thumbnails carry signed resizing params that expire; the plain
+  // CDN path is deterministic from the id and never goes stale.
+  return {
+    videoId,
+    title,
+    published: '',
+    durationSec,
+    thumb: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  };
+}
+
+/** Stop paginating here — a channel can have tens of thousands of uploads. */
+const LIST_CAP = 400;
+/** Guards against a continuation loop that never reports completion. */
+const MAX_PAGES = 12;
+/**
+ * Two separate budgets, because they buy different things. Measured against the
+ * deployed Worker on fresh channels (edge cache misses only):
+ *
+ *   no budget        248 items avg, median 30 s, max 55 s — the client, which
+ *                    gives the whole feed load 25 s, never sees these
+ *   9 s shared       96 items avg, median 9.5 s, but only 7/12 channels
+ *                    answered at all
+ *   split (this)     ~150 items avg, median 14 s, p90 20 s, 7/10 answered
+ *
+ * A shared budget is what made the 9 s run fail so often: retrying the FIRST
+ * page is what turns a 502 into a listing, and a tight overall deadline spends
+ * that allowance on pagination instead. So the first page keeps its retries and
+ * only the walk through the rest of the channel is time-boxed.
+ *
+ * Success rate swings between runs (70–92% observed) because YouTube's bot wall
+ * treats datacenter IPs inconsistently; two runs cannot separate a config change
+ * from its mood. What does not swing: a failure here falls back to YouTube's
+ * Atom feed, which is exactly the 15 items every channel used to be limited to,
+ * so this is a strict improvement in every outcome.
+ */
+const PAGE_BUDGET_MS = 8_000;
+/** Hard ceiling on first-page retries, so a bad run cannot outlive the
+ *  client's own 22 s timeout and waste the whole feed load. */
+const ATTEMPT_CEILING_MS = 14_000;
+
+type Page = { videos: unknown[]; has_continuation: boolean; getContinuation(): Promise<unknown> };
+
+async function collect(feed: Page, deadline: number): Promise<{ items: YtItem[]; partial: boolean }> {
+  const out: YtItem[] = [];
+  const seen = new Set<string>();
+  let page: Page | null = feed;
+  let partial = false;
+
+  for (let i = 0; i < MAX_PAGES && page && out.length < LIST_CAP; i++) {
+    for (const node of page.videos ?? []) {
+      const item = itemFromNode(node);
+      if (item && !seen.has(item.videoId)) {
+        seen.add(item.videoId);
+        out.push(item);
+      }
+    }
+    if (!page.has_continuation) break;
+    if (out.length >= LIST_CAP || Date.now() > deadline) {
+      partial = true;
+      break;
+    }
+    // Measured from production: continuations are 403'd intermittently, and a
+    // single immediate retry recovers a large share of them (a channel that
+    // stopped at 30 items reaches 150–240 on the retry).
+    let next: Page | null = null;
+    for (let attempt = 0; attempt < 2 && !next; attempt++) {
+      if (attempt && Date.now() > deadline) break;
+      try {
+        next = (await page.getContinuation()) as Page;
+      } catch (e) {
+        if (attempt) console.error('tubeList continuation failed:', (e as Error).message);
+      }
+    }
+    if (!next) {
+      partial = true;
+      break;
+    }
+    page = next;
+  }
+  if (page?.has_continuation && out.length >= LIST_CAP) partial = true;
+  return { items: out.slice(0, LIST_CAP), partial };
+}
+
+/**
+ * List a channel's uploads or a playlist's items via Innertube — the same
+ * session that resolves audio.
+ *
+ * This replaces a Piped/Invidious pool that was measured completely dead
+ * (0 successes; every instance 502/403 on every listing endpoint), which left
+ * every YouTube show in the app capped at the 15 items the Atom feed carries.
+ */
+async function listOnce(type: 'channel' | 'playlist', id: string): Promise<YtListing | null> {
+  const yt = await innertube();
+  if (type === 'playlist') {
+    const pl = await yt.getPlaylist(id);
+    const { items, partial } = await collect(pl as never, Date.now() + PAGE_BUDGET_MS);
+    if (!items.length) return null;
+    return {
+      title: pl.info?.title ?? 'YouTube',
+      author: pl.info?.author?.name ?? '',
+      items,
+      partial,
+    };
+  }
+  const ch = await yt.getChannel(id);
+  if (!ch.has_videos) return null;
+  const videos = await ch.getVideos();
+  // Paging is timed from here, so a slow first page does not eat the budget.
+  const { items, partial } = await collect(videos as never, Date.now() + PAGE_BUDGET_MS);
+  if (!items.length) return null;
+  return {
+    title: ch.metadata?.title ?? 'YouTube',
+    author: ch.metadata?.title ?? '',
+    items,
+    partial,
+  };
+}
+
+/** Attempts for the first page, bounded by the shared deadline. Measured:
+ *  7/10 channels answered on the first try, and every one of the three that
+ *  did not answered within two more. */
+const LIST_ATTEMPTS = 3;
+
+export async function tubeList(
+  type: 'channel' | 'playlist',
+  id: string,
+): Promise<YtListing | null> {
+  const giveUpAt = Date.now() + ATTEMPT_CEILING_MS;
+  for (let attempt = 1; attempt <= LIST_ATTEMPTS; attempt++) {
+    try {
+      const listing = await listOnce(type, id);
+      if (listing) return listing;
+    } catch (e) {
+      console.error(`tubeList[${type}] attempt ${attempt}:`, (e as Error).message);
+    }
+    if (Date.now() > giveUpAt) break;
+  }
+  return null;
+}
+
 export interface YtSearchRow {
   kind: 'video' | 'channel' | 'playlist';
   id: string;

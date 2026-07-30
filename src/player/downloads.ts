@@ -1,12 +1,21 @@
 import type { Episode } from '../feeds/types';
 import { httpsOnly } from '../lib/safe';
-import { ytServiceAudioUrl } from '../youtube/piped';
-
-export type DownloadOutcome = 'ok' | 'no-url';
+import { ytServiceAudioUrl } from '../youtube/service';
 
 /**
- * Download an episode via a temporary <a download>. YouTube items resolve a
- * real audio URL on demand. (P3 replaces this with Cache API offline copies.)
+ * `'opened'` — the URL was handed to the browser, which is all we can observe.
+ * There is deliberately no `'ok'`: this runs only after the Cache API path
+ * failed on CORS, so the target is always cross-origin, and a cross-origin
+ * `download` attribute is ignored by every browser. The old code set one
+ * anyway and reported `'ok'` unconditionally, so the user was told "saved" for
+ * a file that had merely been opened in a tab.
+ */
+export type DownloadOutcome = 'opened' | 'no-url';
+
+/**
+ * Last-resort handoff for an episode whose CDN refuses CORS: open the audio URL
+ * so the user can save it with the browser's own controls. YouTube items
+ * resolve a real audio URL on demand.
  */
 export async function downloadEpisode(ep: Episode, feedIsYT: boolean): Promise<DownloadOutcome> {
   let src = httpsOnly(ep.episodeUrl || '');
@@ -23,19 +32,7 @@ export async function downloadEpisode(ep: Episode, feedIsYT: boolean): Promise<D
   }
   if (!src) return 'no-url';
 
-  // Keep letters (incl. Turkish), digits, spaces, dashes; cap length.
-  const name =
-    (ep.trackName || 'bolum')
-      .replace(/[^\p{L}\p{N}\s\-_]/gu, '')
-      .trim()
-      .substring(0, 80) || 'bolum';
-  const a = document.createElement('a');
-  a.href = src;
-  a.download = name + '.mp3';
-  a.rel = 'noopener noreferrer';
-  a.target = '_blank';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  return 'ok';
+  const w = window.open(src, '_blank', 'noopener,noreferrer');
+  if (!w) return 'no-url'; // popup blocked — nothing reached the user
+  return 'opened';
 }

@@ -120,8 +120,7 @@
   overflow-y: auto;
   transform: translateY(100%);
   /* visibility flips instantly on open (so focus() can land inside) and only
-     after the slide-out on close. The sheet is never display:none — #ytHost
-     lives in here and the YT embed must stay rendered while dismissed. */
+     after the slide-out on close, so the sheet is never display:none. */
   transition: transform var(--d-slow) var(--ease-out), visibility 0s var(--d-slow);
   visibility: hidden;
   padding-block-start: env(safe-area-inset-top, 0px);
