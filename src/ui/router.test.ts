@@ -50,16 +50,10 @@ describe('parseLocation', () => {
     expect(parseLocation()).toEqual({ kind: 'home' });
   });
 
-  it('decodes a ?yt= token into a typed ref', () => {
+  // YouTube support was removed; shared ?yt= links are still in the wild and
+  // must land somewhere sane rather than throwing or opening a broken feed.
+  it('ignores a ?yt= link left over from the YouTube era', () => {
     setUrl('?yt=vid_dQw4w9WgXcQ');
-    expect(parseLocation()).toEqual({
-      kind: 'feed',
-      req: { kind: 'yt', info: { type: 'video', id: 'dQw4w9WgXcQ' } },
-    });
-  });
-
-  it('falls back to home for an unrecognised ?yt= token', () => {
-    setUrl('?yt=garbage');
     expect(parseLocation()).toEqual({ kind: 'home' });
   });
 
@@ -92,7 +86,6 @@ describe('urlFor', () => {
     const reqs: FeedRequest[] = [
       { kind: 'itunes', id: '1550551126' },
       { kind: 'rss', url: 'https://feeds.example.com/pod' },
-      { kind: 'yt', info: { type: 'playlist', id: 'PLabc-123' } },
     ];
     for (const req of reqs) {
       history.replaceState(null, '', urlFor({ kind: 'feed', req }));

@@ -1,7 +1,7 @@
 import type { Lang } from '../types';
 
 const de: Lang = {
-  search_placeholder: "Podcast-Name, Apple-Podcasts- oder YouTube-Link...",
+  search_placeholder: "Podcast-Name, Apple-Podcasts-Link oder RSS-URL...",
   btn_search: "Suchen →",
   btn_back: "← Zurück",
   now_playing: "JETZT LÄUFT",
@@ -29,7 +29,6 @@ const de: Lang = {
   btn_retry: "Erneut versuchen",
   btn_queue: "Zur Warteschlange hinzufügen",
   sec_podcasts: "Podcasts",
-  sec_youtube: "YouTube",
   queued: "Zur Warteschlange hinzugefügt",
   confirm_clear_progress: "Alle Wiedergabefortschritte werden gelöscht. Bist du sicher?",
   confirm_clear_all: "Alle Einstellungen und Fortschritte werden gelöscht. Bist du sicher?",
@@ -114,10 +113,6 @@ const de: Lang = {
   np_notes: "Notizen zur Folge",
   dl_label: "Folge herunterladen",
   rss_invalid: "Ungültiger RSS-Feed.",
-  yt_video: "YouTube-Video",
-  yt_invalid: "Ungültiger YouTube-Link.",
-  yt_no_stream: "Für dieses Video ist kein werbefreier Audiostream verfügbar, daher kann es nicht abgespielt werden.",
-  yt_rate_limited: "Momentan zu viele Anfragen — kurz warten und erneut auf Wiedergabe tippen.",
   limit_note: "ältere Folgen konnten nicht geladen werden",
   limit_of_total: (n) => `von ${n} im Archiv`,
   s_storage: "Speicher",

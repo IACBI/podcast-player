@@ -5,7 +5,7 @@
  * Two constraints shape this:
  *
  * 1. Reading pixels needs a CORS-clean image. `is1-ssl.mzstatic.com` and
- *    `i.ytimg.com` both send `Access-Control-Allow-Origin: *`, but an arbitrary
+ *    Apple's image CDN sends `Access-Control-Allow-Origin: *`, but an arbitrary
  *    podcast CDN may not — and setting `crossOrigin` on an image whose host
  *    omits the header makes it fail to load *entirely*. So sampling uses a
  *    separate, off-document Image; the visible <img> never gets `crossOrigin`.

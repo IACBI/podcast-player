@@ -1,7 +1,7 @@
 import type { Lang } from '../types';
 
 const ja: Lang = {
-  search_placeholder: "ポッドキャスト名、Apple Podcasts または YouTube のリンク…",
+  search_placeholder: "ポッドキャスト名、Apple Podcasts または RSS のリンク…",
   btn_search: "検索 →",
   btn_back: "← 戻る",
   now_playing: "再生中",
@@ -29,7 +29,6 @@ const ja: Lang = {
   btn_retry: "再試行",
   btn_queue: "キューに追加",
   sec_podcasts: "ポッドキャスト",
-  sec_youtube: "YouTube",
   queued: "キューに追加しました",
   confirm_clear_progress: "すべてのエピソードの再生位置を削除します。よろしいですか？",
   confirm_clear_all: "すべての設定と再生位置を削除します。よろしいですか？",
@@ -114,10 +113,6 @@ const ja: Lang = {
   np_notes: "エピソードの説明",
   dl_label: "エピソードをダウンロード",
   rss_invalid: "無効なRSSフィードです。",
-  yt_video: "YouTube動画",
-  yt_invalid: "無効なYouTubeリンクです。",
-  yt_no_stream: "この動画には広告なしの音声ストリームがないため、再生できません。",
-  yt_rate_limited: "現在リクエストが多すぎます。少し待ってからもう一度再生してください。",
   limit_note: "これより古いエピソードは読み込めませんでした",
   limit_of_total: (n) => `アーカイブ全${n}件中`,
   s_storage: "ストレージ",

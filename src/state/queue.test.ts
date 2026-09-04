@@ -55,7 +55,7 @@ describe('enqueue', () => {
   });
 
   it('treats the same trackId in another feed as a different episode', () => {
-    // RSS guids and YouTube ids are only unique within their own feed.
+    // RSS guids are only unique within their own feed.
     enqueue(item('f1', 'a'));
     enqueue(item('f2', 'a'));
     expect(ids()).toEqual(['f1/a', 'f2/a']);

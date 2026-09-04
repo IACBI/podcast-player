@@ -51,14 +51,6 @@ describe('fetchTextProxied', () => {
     );
   });
 
-  it('skips the guard for app-built URLs (YouTube channel ids look opaque)', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => res('<feed>yt</feed>')));
-    const url = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCuAXFkgsw1L7xaCfnd5JJOw';
-    await expect(fetchTextProxied(url, undefined, undefined, false)).resolves.toBe('<feed>yt</feed>');
-    // ...and would be refused with the guard on, which is why atom.ts opts out.
-    await expect(fetchTextProxied(url)).rejects.toThrow('private-feed');
-  });
-
   it('propagates an abort', async () => {
     vi.stubGlobal(
       'fetch',
@@ -90,14 +82,42 @@ describe('public proxies are opt-in', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('still refuses app-built URLs that skip the credential guard', async () => {
+
+  it('still proxies an ordinary public feed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => res('<rss>ok</rss>')));
+    await expect(fetchTextProxied('https://feeds.example.com/pod.xml')).resolves.toBe(
+      '<rss>ok</rss>',
+    );
+  });
+
+  it('propagates an abort', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_u: RequestInfo | URL, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      ),
+    );
+    const ctrl = new AbortController();
+    const p = fetchTextProxied('https://example.com/feed', ctrl.signal);
+    ctrl.abort();
+    await expect(p).rejects.toMatchObject({ name: 'AbortError' });
+  });
+});
+
+describe('public proxies are opt-in', () => {
+  it('refuses to use them when the setting is off', async () => {
     settings.set({ ...DEFAULT_SETTINGS, allowPublicProxies: false });
-    const fetchMock = vi.fn(async () => res('<feed>yt</feed>'));
+    const fetchMock = vi.fn(async () => res('<rss>ok</rss>'));
     vi.stubGlobal('fetch', fetchMock);
-    const url = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCuAXFkgsw1L7xaCfnd5JJOw';
-    await expect(fetchTextProxied(url, undefined, undefined, false)).rejects.toThrow(
+    await expect(fetchTextProxied('https://feeds.example.com/pod.xml')).rejects.toThrow(
       PROXIES_DISABLED_ERROR,
     );
+    // Nothing may leave: the operators must not even learn the feed URL.
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

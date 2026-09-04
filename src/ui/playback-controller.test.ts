@@ -40,7 +40,7 @@ function feedXml(title: string, ids: string[], dated = ids.length): string {
 const FEED_A = { url: 'https://feeds.example.com/a', id: 'rss:https://feeds.example.com/a' };
 const FEED_B = { url: 'https://feeds.example.com/b', id: 'rss:https://feeds.example.com/b' };
 
-/** Mostly undated, like a YouTube listing: dates only on the newest item. */
+/** Mostly undated: dates only on the newest item. */
 const FEED_SPARSE = { url: 'https://feeds.example.com/sparse', id: 'rss:https://feeds.example.com/sparse' };
 
 const BODIES: Record<string, string> = {
@@ -161,10 +161,8 @@ describe('episode ordering', () => {
   });
 
   it('keeps source order when only a few items carry a date', async () => {
-    // A YouTube listing looks like this: the full list comes from Innertube,
-    // which reports only relative ages, and absolute dates are merged in for
-    // the handful the Atom feed still covers. Treating the undated majority as
-    // epoch 0 would fling them to one end of the list.
+    // Some feeds carry a date on only the newest handful of items. Treating
+    // the undated majority as epoch 0 would fling them to one end of the list.
     await open(FEED_SPARSE.url, 5);
     expect(ctl.session().filtered.map((e) => e.trackId)).toEqual(['s5', 's4', 's3', 's2', 's1']);
   });

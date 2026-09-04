@@ -1,7 +1,7 @@
 import type { Lang } from '../types';
 
 const tr: Lang = {
-  search_placeholder: "Podcast adı, Apple Podcasts veya YouTube linki...",
+  search_placeholder: "Podcast adı, Apple Podcasts linki veya RSS adresi...",
   btn_search: "Ara →",
   btn_back: "← Geri",
   now_playing: "ŞU AN ÇALIYOR",
@@ -29,7 +29,6 @@ const tr: Lang = {
   btn_retry: "Tekrar dene",
   btn_queue: "Kuyruğa ekle",
   sec_podcasts: "Podcastler",
-  sec_youtube: "YouTube",
   queued: "Kuyruğa eklendi",
   confirm_clear_progress: "Tüm bölüm ilerlemeleri silinecek. Emin misin?",
   confirm_clear_all: "Tüm ayarlar ve ilerleme silinecek. Emin misin?",
@@ -114,10 +113,6 @@ const tr: Lang = {
   np_notes: "Bölüm notları",
   dl_label: "Bölümü indir",
   rss_invalid: "Geçersiz RSS beslemesi.",
-  yt_video: "YouTube videosu",
-  yt_invalid: "Geçersiz YouTube bağlantısı.",
-  yt_no_stream: "Bu video için reklamsız bir ses akışı bulunamadı, bu yüzden oynatılamıyor.",
-  yt_rate_limited: "Şu anda çok fazla istek var — biraz bekleyip tekrar çal.",
   limit_note: "daha eski bölümler yüklenemedi",
   limit_of_total: (n) => `arşivdeki ${n} bölümden`,
   s_storage: "Depolama",

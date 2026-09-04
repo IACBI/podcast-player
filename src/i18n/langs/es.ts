@@ -1,7 +1,7 @@
 import type { Lang } from '../types';
 
 const es: Lang = {
-  search_placeholder: "Nombre del pódcast, enlace de Apple Podcasts o de YouTube...",
+  search_placeholder: "Nombre del pódcast, enlace de Apple Podcasts o URL de RSS...",
   btn_search: "Buscar →",
   btn_back: "← Volver",
   now_playing: "REPRODUCIENDO",
@@ -29,7 +29,6 @@ const es: Lang = {
   btn_retry: "Reintentar",
   btn_queue: "Añadir a la cola",
   sec_podcasts: "Pódcasts",
-  sec_youtube: "YouTube",
   queued: "Añadido a la cola",
   confirm_clear_progress: "Se eliminará todo el progreso. ¿Estás seguro?",
   confirm_clear_all: "Se eliminarán todos los ajustes y el progreso. ¿Estás seguro?",
@@ -114,10 +113,6 @@ const es: Lang = {
   np_notes: "Notas del episodio",
   dl_label: "Descargar episodio",
   rss_invalid: "Feed RSS no válido.",
-  yt_video: "Vídeo de YouTube",
-  yt_invalid: "Enlace de YouTube no válido.",
-  yt_no_stream: "No hay ninguna pista de audio sin anuncios para este vídeo, así que no se puede reproducir.",
-  yt_rate_limited: "Demasiadas solicitudes ahora mismo: espera un momento y vuelve a darle a reproducir.",
   limit_note: "no se pudieron cargar los episodios más antiguos",
   limit_of_total: (n) => `de ${n} en el archivo`,
   s_storage: "Almacenamiento",

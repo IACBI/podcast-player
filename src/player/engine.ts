@@ -2,14 +2,6 @@
  * Playback engine — the transport facade over the <audio> element, so
  * keyboard/waveform/Media Session stay agnostic. Emits typed events instead of
  * poking the DOM (UI subscribes).
- *
- * There used to be a second transport here: the `youtube-nocookie` IFrame
- * embed, used whenever no real audio stream could be resolved for a video. It
- * was removed because it could not deliver the two things the app promises for
- * YouTube — no ads, and playback that survives a locked screen. An iframe does
- * neither. Measured against podcast/talk content the audio path resolves ~95%
- * of videos (see scripts/yt-resolve-rate.cjs); the remainder now says so
- * plainly instead of quietly serving ads that stop when the screen turns off.
  */
 
 export type EngineEvent =

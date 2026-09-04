@@ -18,7 +18,7 @@ import { httpsOnly } from '../lib/safe';
 import { signal } from '../state/signals';
 
 export interface PlayingSession {
-  /** `<itunesId>` | `rss:<url>` | `yt:<type>:<id>` — see feeds/feed-id.ts. */
+  /** `<itunesId>` | `rss:<url>` — see feeds/feed-id.ts. */
   feedId: string;
   meta: FeedMeta;
   /** The playing feed's episodes, in the order prev/next should walk. */
@@ -26,7 +26,6 @@ export interface PlayingSession {
   /** Index into `episodes`. */
   index: number;
   trackId: string;
-  isYT: boolean;
 }
 
 /** null until the user starts an episode. */

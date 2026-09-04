@@ -6,20 +6,18 @@
 
 import type { Episode, FeedMeta, FeedRequest, Subscription } from '../../feeds/types';
 import { feedIdOf, requestFromFeedId } from '../../feeds/feed-id';
-import { ytFromToken } from '../../feeds/input-parse';
 import { subscriptions } from '../../storage/subscriptions';
 import { getLastPlayed, getProgress } from '../../storage/progress';
 import { getCachedFeed, getResume } from '../../storage/db';
 import { local } from '../../storage/local';
 
-/** Convert a stored subscription id into a feed request (legacy id scheme). */
+/**
+ * Convert a stored subscription id into a feed request (legacy id scheme).
+ * Null for a subscription that can no longer be loaded — a `yt:` entry left
+ * over from when the app supported YouTube; callers skip those rows.
+ */
 export function requestFromSubscription(sub: Subscription): FeedRequest | null {
-  const req = requestFromFeedId(String(sub.id));
-  if (req) return req;
-  // Only reachable for a malformed `yt:` id — older entries may carry the
-  // deep-link token instead of a usable type/id pair.
-  const ref = sub.yt ? ytFromToken(sub.yt) : null;
-  return ref ? { kind: 'yt', info: ref } : null;
+  return requestFromFeedId(String(sub.id));
 }
 
 /** One "continue listening" row: an episode with saved progress + its feed. */

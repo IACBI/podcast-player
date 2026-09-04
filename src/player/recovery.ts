@@ -1,17 +1,15 @@
 /**
  * Playback recovery — the watchdog that keeps a backgrounded episode alive.
  *
- * The audio path for a YouTube episode is a proxied byte range: the media
- * element asks the Worker for the next window every RESPONSE_CAP bytes, and the
- * Worker asks googlevideo for it. Any one of those continuations can fail — the
- * signed URL expires, the datacenter IP gets a 403, or the phone's radio is
- * asleep and the request times out. The element's answer to all of that is to
- * fire `stalled` and then `error` and stop forever.
+ * Streaming an episode is a series of range requests, and any one of them can
+ * fail: the CDN drops the connection, the phone's radio is asleep and the
+ * request times out, the network changes mid-listen. The element's answer to
+ * all of that is to fire `stalled`, then `error`, and stop forever.
  *
- * That is the actual reason playback dies with the screen off. Nothing in the
- * element, the Media Session, or the Worker retries; this module is the retry.
- * It distinguishes a pause the USER asked for from one the network imposed, so
- * it only ever resumes something that was meant to be playing.
+ * That is how playback dies with the screen off. Nothing in the element or the
+ * Media Session retries, so this module is the retry. It distinguishes a pause
+ * the USER asked for from one the network imposed, and only ever resumes
+ * something that was meant to be playing.
  */
 
 import { audio, onEngine } from './engine';

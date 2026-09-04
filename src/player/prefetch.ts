@@ -40,7 +40,7 @@ function connection(): Conn | undefined {
 }
 
 function allowedNow(): boolean {
-  const mode = settings().prefetchYouTube;
+  const mode = settings().prefetchAudio;
   if (mode === 'never') return false;
   const c = connection();
   if (c?.saveData) return false;
@@ -55,7 +55,7 @@ function allowedNow(): boolean {
  * Start caching `ep` in the background. Safe to call on every play — it is
  * idempotent per track and silently does nothing when it should not run.
  */
-export function prefetchEpisode(ep: Episode, feedId: string, feedIsYT: boolean): void {
+export function prefetchEpisode(ep: Episode, feedId: string): void {
   const id = String(ep.trackId);
   if (!hooks || !id || attempted.has(id) || !allowedNow()) return;
   attempted.add(id);
@@ -63,7 +63,7 @@ export function prefetchEpisode(ep: Episode, feedId: string, feedIsYT: boolean):
   void (async () => {
     try {
       if (await isDownloaded(id)) return; // already local, nothing to do
-      const outcome = await downloadOffline(ep, feedId, feedIsYT, { ephemeral: true });
+      const outcome = await downloadOffline(ep, feedId, { ephemeral: true });
       if (outcome !== 'ok') return;
       // Everything below re-reads live state: the download may have taken
       // minutes, and the user may be three episodes further on by now.

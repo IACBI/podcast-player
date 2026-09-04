@@ -53,11 +53,7 @@ export function initMediaSession(actions: MediaSessionActions): void {
   });
 }
 
-/**
- * Keep the OS play/pause glyph honest. Chrome infers this from the <audio>
- * element, but the YouTube embed path has no element to infer from, so the
- * lock screen showed a stale icon there.
- */
+/** Keep the OS play/pause glyph honest, including while a source is swapping. */
 export function setPlaybackState(state: MediaSessionPlaybackState): void {
   if (!('mediaSession' in navigator)) return;
   try {

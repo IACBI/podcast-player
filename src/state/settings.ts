@@ -37,7 +37,7 @@ export interface Settings {
    * screen and not. `wifi` is the default: it only backs off when the browser
    * positively reports a cellular connection, which iOS never does.
    */
-  prefetchYouTube: PrefetchMode;
+  prefetchAudio: PrefetchMode;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -55,7 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lang: 'tr',
   ambientArt: true,
   allowPublicProxies: false,
-  prefetchYouTube: 'wifi',
+  prefetchAudio: 'wifi',
 };
 
 /**
@@ -72,7 +72,7 @@ const ALLOWED: Partial<Record<keyof Settings, ReadonlySet<unknown>>> = {
   rowHeight: new Set(['42px', '54px', '66px']),
   theme: new Set(['auto', 'dark', 'light', 'oled']),
   defaultSort: new Set(['asc', 'desc']),
-  prefetchYouTube: new Set(['always', 'wifi', 'never']),
+  prefetchAudio: new Set(['always', 'wifi', 'never']),
 };
 
 /** Hex colours only — the accent feeds several `rgb()`/gradient tokens. */

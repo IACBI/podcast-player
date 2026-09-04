@@ -388,11 +388,9 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
     const url =
       location.origin +
       location.pathname +
-      (id.startsWith('yt:')
-        ? '?yt=' + encodeURIComponent(meta.yt || '')
-        : id.startsWith('rss:')
-          ? '?rss=' + encodeURIComponent(id.slice(4))
-          : '?podcast=' + encodeURIComponent(id));
+      (id.startsWith('rss:')
+        ? '?rss=' + encodeURIComponent(id.slice(4))
+        : '?podcast=' + encodeURIComponent(id));
     if (navigator.share) {
       navigator.share({ title: meta.name || 'Podcast', url }).catch(() => {
         /* user cancelled */

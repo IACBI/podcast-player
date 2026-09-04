@@ -4,9 +4,13 @@ import type { FeedRequest } from './types';
  * The feed id ⇄ feed request mapping, in one place.
  *
  * The id scheme is frozen by persisted data (`pp_favs`, `pp_last_<feedId>`, the
- * IndexedDB `feeds`/`resume` stores): `<itunesId>` | `rss:<url>` |
- * `yt:<type>:<id>`. Both directions used to be reimplemented per call site,
- * which is how they drifted apart.
+ * IndexedDB `feeds`/`resume` stores): `<itunesId>` | `rss:<url>`. Both
+ * directions used to be reimplemented per call site, which is how they drifted
+ * apart.
+ *
+ * `yt:` ids are still recognised, only to be REJECTED: YouTube support was
+ * removed, and a stored subscription from that era must resolve to null so the
+ * library can drop the row instead of trying to load a feed that cannot exist.
  */
 
 export function feedIdOf(req: FeedRequest): string {
@@ -15,8 +19,6 @@ export function feedIdOf(req: FeedRequest): string {
       return req.id;
     case 'rss':
       return 'rss:' + req.url;
-    case 'yt':
-      return 'yt:' + req.info.type + ':' + req.info.id;
   }
 }
 
@@ -28,14 +30,6 @@ export function requestFromFeedId(feedId: string): FeedRequest | null {
     const url = s.slice(4);
     return url ? { kind: 'rss', url } : null;
   }
-  if (s.startsWith('yt:')) {
-    const parts = s.split(':'); // yt:<type>:<id> — ids never contain ':'
-    const type = parts[1];
-    const id = parts.slice(2).join(':');
-    if ((type === 'playlist' || type === 'channel' || type === 'video') && id) {
-      return { kind: 'yt', info: { type, id } };
-    }
-    return null;
-  }
+  if (s.startsWith('yt:')) return null; // retired source; see the note above
   return { kind: 'itunes', id: s };
 }

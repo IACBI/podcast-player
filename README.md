@@ -6,9 +6,8 @@
 [![PWA](https://img.shields.io/badge/PWA-ready-5b8af5)](public/manifest.webmanifest)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)](tsconfig.json)
 
-A free, no-account podcast player. Search Apple Podcasts, paste any RSS feed or
-YouTube link — stream, resume, queue and download episodes for offline
-listening. Vite + strict TypeScript frontend, optional Cloudflare Worker
+A free, no-account podcast player. Search Apple Podcasts or paste any RSS feed
+URL — stream, resume, queue and download episodes for offline listening. Vite + strict TypeScript frontend, optional Cloudflare Worker
 backend, installable as a PWA / Microsoft Store / Google Play app.
 
 **"Sinyal" design** — warm charcoal surfaces, an amber "radio dial glow"
@@ -34,7 +33,6 @@ Playing** sheet for transport, sleep timer, speed and queue access.
 | | |
 |---|---|
 | 🔍 **Podcast search** | by name, Apple Podcasts link, or a direct RSS feed URL |
-| ▶️ **YouTube shows** | search by name (channels/playlists/videos appear in results) or paste a link; audio streams through the Worker (Innertube + range-aware proxy), which is **ad-free and keeps playing with the screen off**. There is no iframe fallback: a video with no resolvable audio stream says so rather than quietly playing ads that stop when the phone locks. Measured on podcast/talk content, ~95% of videos resolve to audio (`scripts/yt-resolve-rate.cjs`); music-label videos resolve far less often. Channels and playlists are listed through the same Innertube session — ~150 episodes on average against the deployed Worker, falling back to YouTube's Atom feed (newest ~15) when it cannot page, and saying so either way |
 | 📥 **Offline episodes** | downloads live in the Cache API and play (and seek) with no connection; feeds are cached in IndexedDB and refresh in the background (stale-while-revalidate) |
 | 🧾 **Play queue** | queue any episode as "up next" — the queue wins over list order; own page under **Queue** |
 | 🎧 **Mini transport** | leaving a feed keeps playing; the persistent dock carries skip/play controls (plus prev/next & speed on wide screens) and a seekable progress line — the chevron expands the full **Now Playing** sheet |
@@ -68,7 +66,7 @@ Active while a podcast feed or the Now Playing sheet is open (not while typing i
 npm install           # once
 npm run dev           # http://localhost:5199
 
-# optional backend (feed/iTunes proxy + YouTube resolution)
+# optional backend (feed/iTunes proxy)
 npm --prefix worker install   # once
 npm run worker:dev            # http://127.0.0.1:8787
 ```
@@ -103,7 +101,6 @@ three of them and parses whichever answers first.
 │   ├── lib/               # format helpers, safe DOM/text utils, artwork rendition URLs (art.ts)
 │   ├── feeds/             # iTunes / RSS / input parsing / proxy chain / resolveFeed /
 │   │                      # show notes (HTML→text), credential-URL guard for private feeds
-│   ├── youtube/           # Worker client (list/search/audio) + Atom fallback     
 │   ├── player/            # audio engine, media session, sleep timer, offline downloads
 │   ├── state/             # signals: settings, queue, now-playing, sleep timer
 │   ├── storage/           # localStorage (legacy keys), IndexedDB, OPML
@@ -112,7 +109,7 @@ three of them and parses whichever answers first.
 │   │   ├── views/          # home, search, library, podcast, queue, settings, now-playing
 │   │   ├── views.ts        # view registry (show/hide, focus hand-off)
 │   │   ├── nav.ts          # tab bar / sidebar controller
-│   │   ├── router.ts       # ?podcast= / ?rss= / ?yt= / ?view= ↔ history
+│   │   ├── router.ts       # ?podcast= / ?rss= / ?view= ↔ history
 │   │   └── shell.ts, theme.ts, mini-player.ts, waveform.ts, art-tile.ts, ambient.ts,
 │   │       sleep-control.ts, shortcuts.ts, number-prompt.ts, toast.ts, confirm.ts, …
 │   ├── i18n/              # 8 languages, compile-time key completeness
@@ -123,7 +120,7 @@ three of them and parses whichever answers first.
 │   │   │                   # queue, settings, now-playing)
 │   │   └── index.css       # barrel import
 │   └── sw.ts              # service worker (injectManifest)
-├── worker/                # Cloudflare Worker API (Hono): /v1/feed /v1/itunes /v1/yt/*
+├── worker/                # Cloudflare Worker API (Hono): /v1/feed /v1/itunes
 ├── public/                # manifest, icons (incl. maskable/monochrome), screenshots,
 │                          # privacy-policy, 404
 ├── scripts/               # icon/screenshot generators + headless smoke tests
@@ -133,8 +130,7 @@ three of them and parses whichever answers first.
 ### ☁️ Backend (optional but recommended)
 
 `worker/` is a Cloudflare Worker (free tier friendly): RSS/iTunes proxying with
-edge caching and SSRF guards, plus YouTube listing, search and stream
-resolution from a single Innertube session. Deploy with `npx wrangler deploy`,
+edge caching and SSRF guards. Deploy with `npx wrangler deploy`,
 then set `VITE_API_BASE` to the workers.dev URL at build time. See
 [docs/STORE.md](docs/STORE.md) for the full release pipeline.
 
@@ -169,7 +165,7 @@ message if none is configured; ordinary public feeds are unaffected. See
 
 ## Türkçe
 
-Ücretsiz, üyeliksiz podcast dinleyici. Apple Podcasts'te ara, RSS veya YouTube
+Ücretsiz, üyeliksiz podcast dinleyici. Apple Podcasts'te ara veya RSS
 linki yapıştır — çal, kaldığın yerden devam et, kuyruğa ekle, bölümleri
 çevrimdışı dinlemek için indir. Vite + strict TypeScript ön yüz, isteğe bağlı
 Cloudflare Worker arka ucu; PWA / Microsoft Store / Google Play uygulaması
@@ -191,7 +187,6 @@ oynatma, uyku zamanlayıcısı, hız ve kuyruğa erişim için tam ekran **Şimd
 | | |
 |---|---|
 | 🔍 **Podcast arama** | isim, Apple Podcasts linki veya doğrudan RSS URL'si |
-| ▶️ **YouTube yayınları** | **isimle ara** (kanal/playlist/videolar sonuçlarda listelenir) veya link yapıştır; ses Worker üzerinden akar (Innertube + range destekli proxy) — **reklamsız ve ekran kapalıyken de çalar**. Iframe yedeği yoktur: sesi çözülemeyen video bunu açıkça söyler, sessizce reklam çalıp telefon kilitlenince susmaz. Podcast/konuşma içeriğinde videoların ~%95'i sese çözülür (`scripts/yt-resolve-rate.cjs`); müzik videolarında oran çok daha düşüktür. Kanal/playlist listelemesi de aynı Innertube oturumundan gelir — canlı Worker'da ortalama ~150 bölüm; sayfalanamadığında YouTube Atom feed'ine (son ~15) düşer ve her iki durumda da bunu belirtir |
 | 📥 **Çevrimdışı bölümler** | indirilenler Cache API'de yaşar, bağlantısız çalar ve sarar; feed'ler IndexedDB'de önbelleklenir, arka planda tazelenir |
 | 🧾 **Kuyruk** | bölümü "sıradaki" olarak işaretle — kuyruk, liste sırasından önce gelir; kendi sayfası **Kuyruk** görünümünde |
 | 🎧 **Mini transport** | feed'den çıkınca çalma sürer; kalıcı dock üzerinde atlama/oynat kontrolleri (geniş ekranda önceki/sonraki ve hız) ve dokunarak sarılabilir ilerleme çizgisi — ok simgesi tam **Şimdi Çalıyor** panelini açar |
@@ -225,7 +220,7 @@ Bir podcast feed'i ya da Şimdi Çalıyor paneli açıkken etkindir (bir alana y
 npm install           # bir kez
 npm run dev           # http://localhost:5199
 
-# isteğe bağlı arka uç (feed/iTunes proxy + YouTube çözümleme)
+# isteğe bağlı arka uç (feed/iTunes proxy)
 npm --prefix worker install   # bir kez
 npm run worker:dev            # http://127.0.0.1:8787
 ```

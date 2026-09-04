@@ -153,10 +153,9 @@ gh release create v4.1.27 \
 9. **Production → Create release** → aynı `.aab` → **Submit for review**
    (ilk inceleme birkaç gün sürebilir).
 
-> **Not (Play politikası):** YouTube seslendirme özelliği üçüncü-taraf ToS
-> tartışması doğurabilir. İnceleme reddi gelirse YouTube özelliğini
-> `VITE_ENABLE_YT=false` benzeri bir bayrakla Play build'inden çıkarmak
-> plandaki azaltma yoludur.
+> **Not:** 4.2.0 öncesi sürümlerde bir YouTube ses özelliği vardı ve üçüncü-taraf
+> ToS riski taşıyordu. Özellik tamamen kaldırıldı; uygulama artık yalnızca RSS
+> ve Apple Podcasts kataloğuna bağlanıyor, dolayısıyla bu risk kalmadı.
 
 
 ### Arka planda çalma (kullanıcıya söylenmesi gereken)
@@ -166,18 +165,18 @@ ayarlandığında Chrome medya bildirimini ve ön plan servisini kendisi açar, 
 ekran kapalıyken ses normalde devam eder. Kesildiği bildirilen durumların ikisi
 gerçek sebeptir:
 
-1. **Ağ.** Proxy'lenen ses akışı her 32 MB'da bir yeni range isteği yapar;
-   telefon uyurken bu istek düşerse eskiden çalma kalıcı olarak ölüyordu.
-   `src/player/recovery.ts` artık akışı yeniden çözümleyip aynı saniyeden devam
-   ediyor, `src/player/prefetch.ts` ise bölümü arka planda tamamen önbelleğe
-   alarak ağ bağımlılığını bitiriyor (Ayarlar → "Çalarken önbelleğe al").
+1. **Ağ.** Akış sırasında bölüm parça parça çekilir; telefon uyurken bir istek
+   düşerse eskiden çalma kalıcı olarak ölüyordu. `src/player/recovery.ts` artık
+   kaynağı yeniden çözümleyip aynı saniyeden devam ediyor,
+   `src/player/prefetch.ts` ise bölümü arka planda tamamen önbelleğe alarak ağ
+   bağımlılığını bitiriyor (Ayarlar → "Çalarken önbelleğe al").
 2. **OEM pil yönetimi.** Xiaomi, Samsung ve Huawei cihazlarda agresif
    "uygulamayı öldür" davranışı hiçbir web tabanlı çözümün aşamayacağı bir
    sınırdır. Mağaza açıklamasına ve SSS'ye şu adımı koy: **Ayarlar →
    Uygulamalar → Seseri → Pil → "Kısıtlanmamış" (Unrestricted)**.
 
 Doğrulama: `adb shell dumpsys media_session` çalarken bir oturum listelemeli;
-`adb logcat | grep v1/yt/audio` arka plandaki devam isteklerini gösterir.
+`adb logcat` arka plandaki bölüm isteklerini gösterir.
 
 ---
 
@@ -201,9 +200,7 @@ sarmalayıcı) veya Capacitor kabuğu. Her ikisi de şunları gerektirir
 1. Apple Developer Program üyeliği ($99/yıl).
 2. Xcode ile imzalama (macOS gerekir) + App Store Connect kaydı.
 3. App Review: "sadece web sitesi sarmalayıcı" retleri riskine karşı
-   yerel değer katmanı (ör. offline indirme, medya oturumu) vurgulanmalı;
-   YouTube sesi özelliği Play'dekiyle aynı ToS riskini taşır — gerekirse
-   `VITE_ENABLE_YT=false` bayrağıyla iOS build'inden çıkarılır.
+   yerel değer katmanı (ör. offline indirme, medya oturumu) vurgulanmalı.
 
 Somut adımlar, `capacitor.config.ts` içeriği, `Info.plist` anahtarları ve
 `AppDelegate.swift` değişikliği için: [docs/IOS.md](IOS.md). O dosyadaki hiçbir

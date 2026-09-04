@@ -17,7 +17,6 @@ vi.mock('../storage/db', () => ({
 }));
 
 // Never hit the network for YT resolution — offline tests supply direct URLs.
-vi.mock('../youtube/service', () => ({ ytServiceAudioUrl: vi.fn(async () => '') }));
 
 import {
   downloadOffline,
@@ -103,7 +102,7 @@ afterEach(() => {
 describe('downloadOffline', () => {
   it('caches the audio and records the download under String(trackId)', async () => {
     const ep = makeEpisode(12345);
-    const outcome = await downloadOffline(ep, 'feed-1', false);
+    const outcome = await downloadOffline(ep, 'feed-1');
 
     expect(outcome).toBe('ok');
     // Record keyed by the stringified trackId.
@@ -113,13 +112,13 @@ describe('downloadOffline', () => {
 
   it('returns "no-url" when the episode has no usable audio url', async () => {
     const ep = makeEpisode(1, 'http://insecure.example.com/x.mp3'); // httpsOnly strips it
-    expect(await downloadOffline(ep, 'feed-1', false)).toBe('no-url');
+    expect(await downloadOffline(ep, 'feed-1')).toBe('no-url');
     expect(store.size).toBe(0);
   });
 
   it('returns "failed" when the fetch responds non-ok', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
-    expect(await downloadOffline(makeEpisode(2), 'feed-1', false)).toBe('failed');
+    expect(await downloadOffline(makeEpisode(2), 'feed-1')).toBe('failed');
     expect(store.size).toBe(0);
   });
 
@@ -130,7 +129,7 @@ describe('downloadOffline', () => {
         throw new TypeError('Failed to fetch');
       }),
     );
-    expect(await downloadOffline(makeEpisode(3), 'feed-1', false)).toBe('cors-blocked');
+    expect(await downloadOffline(makeEpisode(3), 'feed-1')).toBe('cors-blocked');
   });
 });
 
@@ -138,7 +137,7 @@ describe('cacheKey / trackId round-trip', () => {
   it('stores under String(trackId) and reads back by the same episodeId', async () => {
     // trackId is a number here — the store must coerce it so the read key matches.
     const ep = makeEpisode(98765);
-    await downloadOffline(ep, 'feed-1', false);
+    await downloadOffline(ep, 'feed-1');
 
     const url = await offlineAudioUrl('98765');
     expect(url).toBe('blob:mock-url');
@@ -151,7 +150,7 @@ describe('cacheKey / trackId round-trip', () => {
 
   it('returns null when the record exists but the cache entry is missing', async () => {
     // Record present, but wipe the cache bucket to simulate an evicted body.
-    await downloadOffline(makeEpisode(55), 'feed-1', false);
+    await downloadOffline(makeEpisode(55), 'feed-1');
     cachesStore.clear();
     expect(await offlineAudioUrl('55')).toBeNull();
   });
@@ -159,7 +158,7 @@ describe('cacheKey / trackId round-trip', () => {
 
 describe('removeDownload', () => {
   it('drops both the cache entry and the download record', async () => {
-    await downloadOffline(makeEpisode(77), 'feed-1', false);
+    await downloadOffline(makeEpisode(77), 'feed-1');
     expect(await isDownloaded('77')).toBe(true);
 
     await removeDownload('77');

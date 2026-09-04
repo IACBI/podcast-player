@@ -1,5 +1,4 @@
 import type { FeedRequest } from '../feeds/types';
-import { ytFromToken, ytToToken } from '../feeds/input-parse';
 
 /**
  * History integration. Query-param URLs stay the canonical deep-link format
@@ -21,15 +20,10 @@ export function parseLocation(): Route {
   const p = new URLSearchParams(location.search);
   const pid = p.get('podcast');
   const rss = p.get('rss');
-  const yt = p.get('yt');
   if (pid && /^\d{4,14}$/.test(pid)) return { kind: 'feed', req: { kind: 'itunes', id: pid } };
   // https only: ?rss= is attacker-craftable, so it must not be a lever for
   // making the app fetch arbitrary plaintext URLs.
   if (rss && /^https:\/\//i.test(rss)) return { kind: 'feed', req: { kind: 'rss', url: rss } };
-  if (yt) {
-    const ref = ytFromToken(yt);
-    if (ref) return { kind: 'feed', req: { kind: 'yt', info: ref } };
-  }
   const view = p.get('view');
   if (view && APP_VIEWS.includes(view)) return { kind: 'view', view: view as AppView };
   return { kind: 'home' };
@@ -44,8 +38,6 @@ export function urlFor(route: Route): string {
       return location.pathname + '?podcast=' + encodeURIComponent(req.id);
     case 'rss':
       return location.pathname + '?rss=' + encodeURIComponent(req.url);
-    case 'yt':
-      return location.pathname + '?yt=' + encodeURIComponent(ytToToken(req.info));
   }
 }
 

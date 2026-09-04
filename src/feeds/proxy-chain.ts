@@ -65,12 +65,6 @@ export async function fetchTextProxied(
   url: string,
   outerSignal?: AbortSignal,
   perTimeout = 15000,
-  /**
-   * Refuse the public proxies when the URL embeds a subscriber credential.
-   * On by default so a new caller is protected without having to know; pass
-   * false only for URLs the app builds itself from public identifiers.
-   */
-  guardCredentials = true,
 ): Promise<string> {
   if (outerSignal?.aborted) throw abortError();
 
@@ -93,7 +87,7 @@ export async function fetchTextProxied(
 
   // A credential-bearing feed URL must never reach a public proxy operator —
   // and all three are raced in parallel, so it would leak to three at once.
-  if (guardCredentials && carriesCredential(url)) throw new Error(PRIVATE_FEED_ERROR);
+  if (carriesCredential(url)) throw new Error(PRIVATE_FEED_ERROR);
   if (!publicProxiesAllowed()) throw new Error(PROXIES_DISABLED_ERROR);
 
   const attempts = RSS_PROXIES.map((proxy) =>

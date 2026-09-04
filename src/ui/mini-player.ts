@@ -14,7 +14,7 @@ import { must } from './shell';
  * handle: skip back/forward, play/pause, prev/next + speed (wider screens)
  * and a tap-to-seek progress hairline live right in the dock. The expand
  * chevron (or the title area) opens the full Now Playing sheet for the
- * scrubber, sleep timer, queue and the YouTube video frame.
+ * scrubber, sleep timer and queue.
  */
 
 /** Slim frequency-line bars drawn on the mini dock (animated via CSS while

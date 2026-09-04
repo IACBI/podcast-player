@@ -1,7 +1,6 @@
 import type { Episode } from '../feeds/types';
 import { httpsOnly } from '../lib/safe';
 import { deleteDownload, getDownload, listDownloads, putDownload } from '../storage/db';
-import { ytServiceAudioUrl } from '../youtube/service';
 
 /**
  * Offline episode audio: bytes live in the Cache API bucket `seseri-audio`
@@ -12,22 +11,6 @@ const AUDIO_CACHE = 'seseri-audio';
 
 function cacheKey(episodeId: string): string {
   return '/__offline/' + encodeURIComponent(episodeId);
-}
-
-async function resolveAudioUrl(ep: Episode, feedIsYT: boolean): Promise<string> {
-  let src = httpsOnly(ep.episodeUrl || '');
-  if (!src && feedIsYT && ep.ytId) {
-    try {
-      const u = await ytServiceAudioUrl(ep.ytId);
-      if (u) {
-        ep.episodeUrl = u;
-        src = httpsOnly(u);
-      }
-    } catch {
-      /* no stream */
-    }
-  }
-  return src;
 }
 
 /** Exported for its own unit test; production callers go through `offlineAudioUrl`. */
@@ -47,10 +30,9 @@ const EPHEMERAL_BUDGET_BYTES = 500 * 1024 * 1024;
 export async function downloadOffline(
   ep: Episode,
   feedId: string,
-  feedIsYT: boolean,
   opts: { ephemeral?: boolean } = {},
 ): Promise<OfflineOutcome> {
-  const src = await resolveAudioUrl(ep, feedIsYT);
+  const src = httpsOnly(ep.episodeUrl || '');
   if (!src) return 'no-url';
   try {
     const res = await fetch(src, { mode: 'cors', credentials: 'omit' });

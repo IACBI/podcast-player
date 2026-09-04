@@ -31,7 +31,6 @@ export interface Lang {
   btn_retry: string;
   btn_queue: string;
   sec_podcasts: string;
-  sec_youtube: string;
   queued: string;
   confirm_clear_progress: string;
   confirm_clear_all: string;
@@ -116,10 +115,6 @@ export interface Lang {
   np_notes: string;
   dl_label: string;
   rss_invalid: string;
-  yt_video: string;
-  yt_invalid: string;
-  yt_no_stream: string;
-  yt_rate_limited: string;
   limit_note: string;
   limit_of_total: LangFn;
   s_storage: string;

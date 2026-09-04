@@ -4,6 +4,91 @@
 > reaching 100 rolls into the minor instead — `4.1.99` → `4.2.0`. Releases are
 > not semver-major-bumped for feature work.
 
+## 4.2.0 — 2026-09-04
+
+### YouTube support removed
+
+The app could no longer deliver what it promised for YouTube — ad-free audio
+that keeps playing with the screen off — so the feature is gone rather than
+left half-working.
+
+Measured against the deployed Worker on 2026-09-04: **10% of videos resolved to
+an audio stream**, down from the ~95% recorded on 2026-07-30. Two independent
+gates now gate it, both enforced by YouTube:
+
+- `getBasicInfo` answers `LOGIN_REQUIRED — Sign in to confirm you're not a bot`
+  for most videos when the request comes from a datacenter IP. The same call
+  from a residential IP succeeds, so it is the egress address that is walled,
+  not the code.
+- Even when a stream URL resolves, it serves only the first ~2 MB; every range
+  past that answers 403 — including from the machine that resolved it. The rest
+  of the file needs an attestation token the Worker cannot produce (BotGuard
+  needs a JS runtime `workerd` does not allow).
+
+Neither is fixable inside the Worker, and working around them is an arms race
+against a moving target. Removed rather than pretended.
+
+- **Client:** `src/youtube/` deleted (Worker client + Atom fallback). The `yt`
+  feed kind, `YouTubeRef`, `Episode.ytId`, `FeedMeta.kind`/`yt`, the `?yt=`
+  route, the YouTube column in Search, the noembed title backfill and the
+  `i.ytimg.com` artwork ladder all went with it.
+- **Worker:** `/v1/yt/list`, `/v1/yt/search`, `/v1/yt/resolve` and
+  `/v1/yt/audio` are gone, along with `innertube.ts`, the `youtubei.js`
+  dependency, the audio-proxy rate-limit budgets and the `yta2:` KV namespace
+  usage. `/v1/feed` and `/v1/itunes` are unchanged.
+- **Existing data:** a subscription stored as a `yt:` id now resolves to null
+  and its row is skipped instead of rendering as a feed that cannot open. An
+  OPML file exported by an older version still imports — its podcast entries
+  are kept, its YouTube ones skipped. A shared `?yt=` link lands on Home.
+- `noembed.com` left the CSP; `VITE_ENABLE_YT` (documented but never
+  implemented) left `vite-env.d.ts`.
+
+### Playback survives a backgrounded tab
+
+This work predates the removal and applies to every episode, YouTube or not.
+
+- **`player/recovery.ts` (new).** The element fires `stalled` and then `error`
+  when a range request dies mid-episode, and nothing retried it — that is how
+  playback died with the screen off. A watchdog now re-resolves the source and
+  continues from the same second, with a 1/2/4/8/15 s backoff and a five-attempt
+  budget that resets on real progress. It tracks the user's transport intent, so
+  a pause the user asked for is never undone, and it stays quiet while offline,
+  retrying the moment `online` fires.
+- **`player/prefetch.ts` (new).** While an episode streams, its bytes are pulled
+  into the same Cache API store a download uses; when the copy completes the
+  element is switched to it at the same position, rate and play state. After
+  that, playback needs no network at all. Settings → "Cache while playing"
+  (`always` / `wifi` / `never`, default `wifi`); self-managed copies are hidden
+  from Downloads and evicted oldest-first past 500 MB, and a copy the user saved
+  deliberately is never evicted.
+- **`player/keep-awake.ts` (new).** Screen Wake Lock while playing and visible.
+  It does not keep audio alive with the screen off — nothing web-side can — it
+  stops the tab being throttled while the user has the app open.
+- `engine.ts` surfaces `stalled`/`waiting` and carries `MediaError.code`; the
+  element gets `playsinline` and `preload="auto"` (iOS refuses to play a
+  fullscreen-capable element in the background without the former).
+- Foregrounding, and Chrome's Page Lifecycle `resume`, re-check that something
+  meant to be playing actually is — on iOS that is the only repair point after
+  WebKit suspends the page.
+- `audio.play()` is called through `?.catch` — it predates its own promise and
+  returns undefined on some engines.
+
+### Worker hardening
+
+- Audio chunking moved from 4 MB/16 MB to 8 MB/32 MB, halving continuation
+  requests while staying at four subrequests per response (the free plan allows
+  50). *(Route removed later in this release; kept here for the record.)*
+- KV TTL for a resolved format is derived from the URL's own `expire` parameter
+  instead of a fixed 1800 s that contradicted its own comment.
+
+### Docs
+
+- README (both languages), `SECURITY.md`, `docs/STORE.md` and `docs/TESTPLAN.md`
+  no longer describe a YouTube feature. `docs/IOS.md` (new) records the
+  unverified Capacitor/iOS procedure; `docs/STORE.md` gains an Android
+  background-playback note, including the OEM battery setting no web app can
+  work around.
+
 ## 4.1.27 — 2026-07-31
 
 ### Playback session (the "opening a podcast stops the music" bug)

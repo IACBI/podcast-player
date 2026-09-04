@@ -1,7 +1,7 @@
 import type { Lang } from '../types';
 
 const ar: Lang = {
-  search_placeholder: "اسم البودكاست أو رابط Apple Podcasts أو YouTube...",
+  search_placeholder: "اسم البودكاست أو رابط Apple Podcasts أو عنوان RSS...",
   btn_search: "بحث ←",
   btn_back: "→ رجوع",
   now_playing: "قيد التشغيل",
@@ -29,7 +29,6 @@ const ar: Lang = {
   btn_retry: "إعادة المحاولة",
   btn_queue: "إضافة إلى قائمة الانتظار",
   sec_podcasts: "البودكاست",
-  sec_youtube: "YouTube",
   queued: "أُضيف إلى قائمة الانتظار",
   confirm_clear_progress: "سيتم حذف كل التقدم. هل أنت متأكد؟",
   confirm_clear_all: "سيتم حذف كل الإعدادات والتقدم. هل أنت متأكد؟",
@@ -114,10 +113,6 @@ const ar: Lang = {
   np_notes: "ملاحظات الحلقة",
   dl_label: "تنزيل الحلقة",
   rss_invalid: "خلاصة RSS غير صالحة.",
-  yt_video: "فيديو YouTube",
-  yt_invalid: "رابط YouTube غير صالح.",
-  yt_no_stream: "لا يتوفر لهذا الفيديو تدفق صوتي خالٍ من الإعلانات، لذلك لا يمكن تشغيله.",
-  yt_rate_limited: "الطلبات كثيرة جدًا الآن — انتظر قليلًا ثم اضغط تشغيل مرة أخرى.",
   limit_note: "تعذّر تحميل الحلقات الأقدم",
   limit_of_total: (n) => `من أصل ${n} في الأرشيف`,
   s_storage: "التخزين",

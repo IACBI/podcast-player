@@ -45,10 +45,9 @@ import { playing, nowPlayingLabel, type PlayingSession } from '../player/session
 import { dequeueNext, enqueue, queuePosition, removeFromQueue, type QueueItem } from '../state/queue';
 import { settings } from '../state/settings';
 import { refreshSubscription } from '../storage/subscriptions';
-import { ytResolveAudio } from '../youtube/service';
 import { consumeSleepAtEpisodeEnd } from '../player/sleep-timer';
 import { PRIVATE_FEED_ERROR } from '../feeds/credential-url';
-import { API_BASE, PROXIES_DISABLED_ERROR, svcJson } from '../feeds/proxy-chain';
+import { API_BASE, PROXIES_DISABLED_ERROR } from '../feeds/proxy-chain';
 import { toast } from './toast';
 
 export interface PlaybackStatus {
@@ -68,7 +67,6 @@ export interface PlaybackSession {
   /** Index of the PLAYING episode in `filtered`, -1 when it is another feed's. */
   currentIndex: number;
   currentTrackId: string | null;
-  isYT: boolean;
   /** True when the list is only part of the show's archive. */
   limited: boolean;
   /** Episodes the source says exist in total, when it says. */
@@ -119,7 +117,6 @@ export function emptySession(): PlaybackSession {
     filtered: [],
     currentIndex: -1,
     currentTrackId: null,
-    isYT: false,
     limited: false,
     total: 0,
     sortAsc: true,
@@ -135,11 +132,8 @@ export function emptySession(): PlaybackSession {
  *
  * The threshold matters. `some()` was enough to switch to date sorting, so a
  * feed where only a handful of items are dated sorted every undated one as
- * epoch 0 and scattered them to one end. YouTube listings are exactly that
- * shape: the full list comes from Innertube, which reports only relative ages,
- * and absolute dates are merged in for the few items the Atom feed still
- * covers. A majority rule keeps RSS (fully dated) chronological and leaves
- * those listings in the order YouTube itself returned them.
+ * epoch 0 and scattered them to one end. A majority rule keeps a fully dated
+ * feed chronological and leaves a sparsely dated one in source order.
  */
 function sortEpisodes(eps: readonly Episode[], sortAsc: boolean): Episode[] {
   const dated = eps.reduce((n, e) => n + (e.releaseDate ? 1 : 0), 0);
@@ -210,7 +204,6 @@ export function createPlaybackController(): PlaybackController {
     session.set({
       ...emptySession(),
       req,
-      isYT: req.kind === 'yt',
       sortAsc: cur.sortAsc,
       filter: cur.filter,
       status: { kind: 'loading', message: t('status_loading') },
@@ -277,16 +270,11 @@ export function createPlaybackController(): PlaybackController {
       }
 
       try {
-        const resolved = await resolveFeed(req, { signal: sig, ytVideoTitle: t('yt_video') });
+        const resolved = await resolveFeed(req, { signal: sig });
         clearTimeout(timeout);
         if (sig.aborted) return;
         applyResolved(resolved);
         void putCachedFeed(resolved);
-
-        // Embed fallback may leave title-less items — fill real titles in bg.
-        if (session().isYT && session().episodes.some((e) => e.ytId && !e.trackName)) {
-          void fillEmbedTitles(sig);
-        }
       } catch (e) {
         clearTimeout(timeout);
         const err = e as Error;
@@ -316,56 +304,6 @@ export function createPlaybackController(): PlaybackController {
     playing.set({ ...p, meta, episodes, index });
   }
 
-  /**
-   * Background-fill real titles via noembed (embed fallback items). Capped:
-   * a playlist can be hundreds of items and each one costs a network round trip
-   * to a third party. Beyond the cap the numbered fallback title stands.
-   */
-  const EMBED_TITLE_CAP = 60;
-
-  async function fillEmbedTitles(sig: AbortSignal): Promise<void> {
-    const targets = session()
-      .episodes.filter((e) => e.ytId && !e.trackName)
-      .slice(0, EMBED_TITLE_CAP);
-    if (!targets.length) return;
-    let i = 0;
-    let since = 0;
-    const reRender = (): void => {
-      if (session().isYT && !sig.aborted) {
-        bump();
-        // The playing row may be one of the filled titles.
-        const p = playing();
-        if (p) playing.set({ ...p });
-      }
-    };
-    const worker = async (): Promise<void> => {
-      while (i < targets.length) {
-        if (sig.aborted) return;
-        const ep = targets[i++];
-        if (!ep) break;
-        try {
-          const r = await svcJson<{ title?: string }>(
-            'https://noembed.com/embed?url=https://www.youtube.com/watch?v=' +
-              encodeURIComponent(ep.ytId ?? ''),
-            sig,
-            8000,
-          );
-          if (r?.title) {
-            ep.trackName = r.title;
-            if (++since >= 6) {
-              since = 0;
-              reRender();
-            }
-          }
-        } catch {
-          /* title stays a fallback */
-        }
-      }
-    };
-    await Promise.all([worker(), worker(), worker(), worker()]);
-    reRender();
-  }
-
   // ── playback ─────────────────────────────────────────────────────
 
   /** Play from the browsed list (the only entry point the feed view needs). */
@@ -380,7 +318,6 @@ export function createPlaybackController(): PlaybackController {
         episodes: s.filtered.slice(),
         index: idx,
         trackId: String(s.filtered[idx]?.trackId ?? ''),
-        isYT: s.isYT,
       },
       autoplay,
     );
@@ -406,11 +343,7 @@ export function createPlaybackController(): PlaybackController {
     playing.set(next);
     markPlayingRow();
 
-    if (next.isYT) {
-      void ytResolveAndPlay(ep, next.trackId, autoplay);
-    } else {
-      void startAudioPreferOffline(ep.episodeUrl || '', next.trackId, autoplay);
-    }
+    void startAudioPreferOffline(ep.episodeUrl || '', next.trackId, autoplay);
 
     const label = nowPlayingLabel(next);
     setMediaMetadata({
@@ -440,9 +373,8 @@ export function createPlaybackController(): PlaybackController {
   }
 
   /**
-   * Guard for the app's only media sink. A YouTube audio URL comes from
-   * whichever third-party Piped instance answered first, so it is no more
-   * trusted than a feed enclosure. Our own offline copies are blob: URLs.
+   * Guard for the app's only media sink: an enclosure URL comes from an
+   * untrusted feed, so only https and our own blob: copies get through.
    *
    * The API base is the deliberate exception: in local dev the worker is plain
    * http on loopback, which is also why the CSP lists it under media-src.
@@ -473,7 +405,7 @@ export function createPlaybackController(): PlaybackController {
       // A blob source is already local, so there is nothing to prefetch.
       const p = playing();
       const ep = p?.episodes[p.index];
-      if (p && ep && String(ep.trackId) === id) prefetchEpisode(ep, p.feedId, p.isYT);
+      if (p && ep && String(ep.trackId) === id) prefetchEpisode(ep, p.feedId);
     }
     audio.src = safe;
     audio.load();
@@ -494,65 +426,6 @@ export function createPlaybackController(): PlaybackController {
         /* autoplay blocked */
       });
     }
-  }
-
-  /**
-   * One YouTube id → one proxied audio URL. Split out of `ytResolveAndPlay`
-   * because the recovery watchdog needs the same call to mint a replacement
-   * URL mid-episode, and a second copy of it would drift.
-   */
-  async function resolveYtAudioUrl(ytId: string, sig?: AbortSignal): Promise<string | null> {
-    return (await resolveYt(ytId, sig)).url;
-  }
-
-  async function resolveYt(
-    ytId: string,
-    sig?: AbortSignal,
-  ): Promise<{ url: string | null; status: number }> {
-    try {
-      return await ytResolveAudio(ytId, sig);
-    } catch {
-      return { url: null, status: 0 };
-    }
-  }
-
-  async function ytResolveAndPlay(ep: Episode, id: string, autoplay: boolean): Promise<void> {
-    audio.pause();
-    const sig = playAbort?.signal;
-    // Downloaded copy wins — no network resolution needed.
-    const local = await offlineAudioUrl(id);
-    if (playing()?.trackId !== id) {
-      if (local) URL.revokeObjectURL(local);
-      return;
-    }
-    if (local) {
-      startAudio(local, id, autoplay);
-      patch({ status: okStatus(session().episodes.length, session().limited, session().total) });
-      return;
-    }
-
-    patch({ status: { kind: 'loading', message: t('status_loading') } });
-    const { url, status } = await resolveYt(ep.ytId ?? '', sig);
-    if (playing()?.trackId !== id) return; // user moved on
-    if (url) {
-      ep.episodeUrl = url; // real media URL → download works too
-      startAudio(url, id, autoplay);
-      patch({ status: okStatus(session().episodes.length, session().limited, session().total) });
-      return;
-    }
-    // 429 is the Worker's abuse budget, not a missing stream: the video is
-    // fine and waiting fixes it, so say that instead of declaring it dead.
-    if (status === 429) {
-      patch({ status: { kind: 'error', message: t('yt_rate_limited') } });
-      toast(t('yt_rate_limited'), 'error');
-      return;
-    }
-    // No stream. There used to be a `youtube-nocookie` iframe fallback here,
-    // which played ads and stopped the moment the screen locked — the two
-    // things this app promises YouTube listeners it will not do. Saying so is
-    // the honest outcome; see player/engine.ts for the measured trade-off.
-    patch({ status: { kind: 'error', message: t('yt_no_stream') } });
-    toast(t('yt_no_stream'), 'error');
   }
 
   /**
@@ -662,31 +535,31 @@ export function createPlaybackController(): PlaybackController {
    * the network when it was never cached.
    */
   async function playQueueItem(item: QueueItem): Promise<void> {
-    const fromList = (meta: FeedMeta, episodes: Episode[], isYT: boolean): boolean => {
+    const fromList = (meta: FeedMeta, episodes: Episode[]): boolean => {
       const index = episodes.findIndex((e) => String(e.trackId) === item.trackId);
       if (index < 0) return false;
-      start({ feedId: meta.id, meta, episodes, index, trackId: item.trackId, isYT }, true);
+      start({ feedId: meta.id, meta, episodes, index, trackId: item.trackId }, true);
       return true;
     };
 
     const p = playing();
-    if (p && p.feedId === item.feedId && fromList(p.meta, p.episodes, p.isYT)) return;
+    if (p && p.feedId === item.feedId && fromList(p.meta, p.episodes)) return;
     const s = session();
-    if (s.meta && s.meta.id === item.feedId && fromList(s.meta, s.filtered, s.isYT)) return;
+    if (s.meta && s.meta.id === item.feedId && fromList(s.meta, s.filtered)) return;
 
     const sortAsc = settings().defaultSort === 'asc';
-    const isYT = item.feedId.startsWith('yt:');
+
     const cached = await getCachedFeed(item.feedId);
-    if (cached && fromList(cached.feed.meta, sortEpisodes(cached.feed.episodes, sortAsc), isYT)) {
+    if (cached && fromList(cached.feed.meta, sortEpisodes(cached.feed.episodes, sortAsc))) {
       return;
     }
 
     const req = requestFromFeedId(item.feedId);
     if (!req) return;
     try {
-      const resolved = await resolveFeed(req, { ytVideoTitle: t('yt_video') });
+      const resolved = await resolveFeed(req, {});
       void putCachedFeed(resolved);
-      if (fromList(resolved.meta, sortEpisodes(resolved.episodes, sortAsc), req.kind === 'yt')) return;
+      if (fromList(resolved.meta, sortEpisodes(resolved.episodes, sortAsc))) return;
     } catch {
       /* reported below */
     }
@@ -710,7 +583,7 @@ export function createPlaybackController(): PlaybackController {
       return;
     }
 
-    const outcome = await downloadOffline(ep, s.meta?.id ?? '', s.isYT);
+    const outcome = await downloadOffline(ep, s.meta?.id ?? '');
     if (outcome === 'ok') {
       const dl = new Set(session().downloadedIds);
       dl.add(id);
@@ -730,7 +603,7 @@ export function createPlaybackController(): PlaybackController {
       return;
     }
     // CORS-blocked CDN etc. → hand the URL to the browser instead.
-    const fb = await downloadEpisode(ep, s.isYT);
+    const fb = downloadEpisode(ep);
     toast(fb === 'opened' ? t('dl_opened_tab') : t('dl_not_found'), fb === 'opened' ? 'info' : 'error');
     bump();
   }
@@ -788,7 +661,6 @@ export function createPlaybackController(): PlaybackController {
       if (!ep) return null;
       const local = await offlineAudioUrl(p.trackId);
       if (local) return local; // a download landed meanwhile — best possible answer
-      if (p.isYT) return ep.ytId ? await resolveYtAudioUrl(ep.ytId) : null;
       return httpsOnly(ep.episodeUrl || '') || null;
     },
     resume: resumeAudioAt,

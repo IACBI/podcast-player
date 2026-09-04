@@ -63,13 +63,6 @@ describe('routing & validation', () => {
     expect((await call('/v1/itunes?url=https://evil.com/lookup')).status).toBe(400);
   });
 
-  it('rejects bad yt params', async () => {
-    expect((await call('/v1/yt/list?type=video&id=abc')).status).toBe(400);
-    expect((await call('/v1/yt/resolve?id=short')).status).toBe(400);
-    expect((await call('/v1/yt/search?q=a')).status).toBe(400);
-    expect((await call('/v1/yt/audio?id=nope')).status).toBe(400);
-  });
-
   it('404s unknown paths', async () => {
     expect((await call('/nope')).status).toBe(404);
   });
@@ -176,10 +169,6 @@ describe('open-proxy protection', () => {
     expect((await call('/', null)).status).toBe(200);
   });
 
-  it('does not gate /v1/yt/audio, since <audio> sends no Origin', async () => {
-    // 400 (bad id) proves the request got past the gate instead of being 403'd.
-    expect((await call('/v1/yt/audio?id=nope', null)).status).toBe(400);
-  });
 });
 
 describe('CORS', () => {

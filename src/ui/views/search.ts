@@ -1,5 +1,5 @@
 /**
- * Search view — iTunes search + URL/RSS/YouTube paste, progressive dual-source
+ * Search view — iTunes search + Apple/RSS URL paste
  * results. Ported from `git show ed59840:src/ui/screens/search.ts`, re-skinned
  * onto the "Sinyal" design system. Favorites moved to Home/Library, so the
  * legacy fav rendering + unfav row variant + language selector are gone.
@@ -9,8 +9,6 @@
 
 import type { FeedRequest } from '../../feeds/types';
 import { searchPodcasts } from '../../feeds/itunes';
-import { ytServiceSearch, type YtSearchItem } from '../../youtube/service';
-import { fmtDur } from '../../lib/format';
 import { parseDirectInput } from '../../feeds/input-parse';
 import { t } from '../../i18n';
 import { artTile, ROW_ART_PX } from '../art-tile';
@@ -30,7 +28,7 @@ export function initSearchView(deps: SearchViewDeps): View {
       <h1 class="view-title search-title" data-i18n="nav_search">Ara</h1>
       <div class="search-row">
         <input class="text-input search-input" id="searchInput" type="text"
-          placeholder="Podcast adı, Apple Podcasts veya YouTube linki..." data-i18n-ph="search_placeholder" />
+          placeholder="Podcast adı, Apple Podcasts linki veya RSS adresi..." data-i18n-ph="search_placeholder" />
         <button class="btn btn-primary search-btn" id="searchBtn" data-i18n="btn_search">Ara →</button>
       </div>
       <div class="results-list" id="resultsList" aria-live="polite"></div>
@@ -81,29 +79,6 @@ export function initSearchView(deps: SearchViewDeps): View {
     return row;
   }
 
-  function ytRow(y: YtSearchItem): HTMLElement {
-    const count =
-      y.kind === 'video'
-        ? fmtDur(y.extra * 1000)
-        : y.kind === 'playlist' && y.extra
-          ? `${y.extra} ${t('ep_count_unit')}`
-          : '';
-    // Piped instances proxy thumbnails through themselves and are often dead —
-    // for videos the official CDN is deterministic from the id and reliable.
-    const art = y.kind === 'video' ? `https://i.ytimg.com/vi/${y.id}/mqdefault.jpg` : y.thumb;
-    return resultRow({
-      art,
-      name: y.title,
-      author: y.author || 'YouTube',
-      ...(count ? { count } : {}),
-      onOpen: () =>
-        deps.openFeed({
-          kind: 'yt',
-          info: { type: y.kind === 'video' ? 'video' : y.kind, id: y.id },
-        }),
-    });
-  }
-
   async function doSearch(): Promise<void> {
     const raw = input.value.trim();
     if (!raw) return;
@@ -111,7 +86,7 @@ export function initSearchView(deps: SearchViewDeps): View {
     searchAbort?.abort();
     searchAbort = new AbortController();
     const signal = searchAbort.signal;
-    // Generous: a cold worker-side YouTube search can take 15 s+; podcasts
+    // Generous: the iTunes proxy can be slow on a cold worker; podcasts
     // render progressively long before this fires.
     const searchTimeout = setTimeout(() => searchAbort?.abort(), 30000);
     const restoreBtn = () => {
@@ -124,7 +99,7 @@ export function initSearchView(deps: SearchViewDeps): View {
     list.setAttribute('aria-busy', 'true');
     list.replaceChildren(stateBox('loading', t('searching')));
 
-    // Direct input: Apple id / YouTube link / RSS URL
+    // Direct input: Apple id / RSS URL
     const direct = parseDirectInput(raw);
     if (direct) {
       clearTimeout(searchTimeout);
@@ -135,21 +110,16 @@ export function initSearchView(deps: SearchViewDeps): View {
       return;
     }
 
-    // Podcasts (iTunes) and YouTube are searched in parallel and rendered
-    // PROGRESSIVELY: podcasts usually land in ~2 s, a cold YouTube search can
-    // take 15 s+ — neither waits for (or is taken down by) the other.
     const podsBox = h('div');
-    const ytBox = h('div');
     let podsDone = false;
-    let ytDone = false;
     let podsErr = '';
     const settle = (): void => {
       if (signal.aborted) return;
-      if (podsDone) restoreBtn(); // main path answered — button is usable again
-      if (!podsDone || !ytDone) return;
+      if (!podsDone) return;
+      restoreBtn();
       clearTimeout(searchTimeout);
       list.setAttribute('aria-busy', 'false');
-      if (!podsBox.hasChildNodes() && !ytBox.hasChildNodes()) {
+      if (!podsBox.hasChildNodes()) {
         list.replaceChildren(
           podsErr
             ? stateBox('error', t('status_err') + podsErr, { onRetry: () => void doSearch() })
@@ -158,7 +128,7 @@ export function initSearchView(deps: SearchViewDeps): View {
       }
     };
     const searching = stateBox('loading', t('searching'));
-    list.replaceChildren(searching, podsBox, ytBox);
+    list.replaceChildren(searching, podsBox);
 
     void searchPodcasts(raw, signal)
       .then((podcasts) => {
@@ -184,21 +154,6 @@ export function initSearchView(deps: SearchViewDeps): View {
       })
       .finally(() => {
         podsDone = true;
-        settle();
-      });
-
-    void ytServiceSearch(raw, signal)
-      .then((ytItems) => {
-        if (signal.aborted || !ytItems.length) return;
-        searching.remove();
-        ytBox.append(h('div', { className: 'search-hint' }, t('sec_youtube')));
-        for (const y of ytItems.slice(0, 8)) ytBox.append(ytRow(y));
-      })
-      .catch(() => {
-        /* YouTube side is best-effort */
-      })
-      .finally(() => {
-        ytDone = true;
         settle();
       });
   }

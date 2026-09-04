@@ -6,9 +6,7 @@ import type { Subscription } from '../feeds/types';
 const subs: Subscription[] = [
   { id: '123456789', name: 'iTunes Show', artist: 'Host', art: '' },
   { id: 'rss:https://example.com/feed.xml', name: 'RSS & Friends', artist: '', art: '' },
-  { id: 'yt:playlist:PLabc-123_XYZ', name: 'YT Playlist', artist: '', art: '', kind: 'yt' },
-  { id: 'yt:channel:UCabcdefghijklmnopqrst', name: 'YT Channel', artist: '', art: '', kind: 'yt' },
-  { id: 'yt:video:dQw4w9WgXcQ', name: 'Single "Video"', artist: '', art: '', kind: 'yt' },
+  { id: 'rss:https://example.com/quotes.xml', name: 'Single "Quoted" Show', artist: '', art: '' },
 ];
 
 describe('exportOpml', () => {
@@ -47,19 +45,17 @@ describe('parseOpml', () => {
     ]);
   });
 
-  it('maps Apple Podcasts and YouTube web links back to legacy ids', () => {
+  // A file exported by a version that still had YouTube must import cleanly:
+  // its podcast entries are kept, its YouTube ones skipped rather than turned
+  // into subscriptions that could never open.
+  it('maps Apple Podcasts links back to legacy ids and skips YouTube ones', () => {
     const xml = `<opml version="2.0"><body>
       <outline text="Apple" type="link" url="https://podcasts.apple.com/us/podcast/x/id987654321"/>
       <outline text="List" type="link" url="https://www.youtube.com/playlist?list=PLxyz_1-2"/>
       <outline text="Chan" type="link" url="https://www.youtube.com/channel/UC12345678901234567890"/>
       <outline text="Vid" type="link" url="https://youtu.be/dQw4w9WgXcQ"/>
     </body></opml>`;
-    expect(parseOpml(xml).map((e) => e.id)).toEqual([
-      '987654321',
-      'yt:playlist:PLxyz_1-2',
-      'yt:channel:UC12345678901234567890',
-      'yt:video:dQw4w9WgXcQ',
-    ]);
+    expect(parseOpml(xml).map((e) => e.id)).toEqual(['987654321']);
   });
 
   it('skips unknown outlines instead of failing', () => {

@@ -1,6 +1,5 @@
 import type { Episode } from '../feeds/types';
 import { httpsOnly } from '../lib/safe';
-import { ytServiceAudioUrl } from '../youtube/service';
 
 /**
  * `'opened'` — the URL was handed to the browser, which is all we can observe.
@@ -14,22 +13,10 @@ export type DownloadOutcome = 'opened' | 'no-url';
 
 /**
  * Last-resort handoff for an episode whose CDN refuses CORS: open the audio URL
- * so the user can save it with the browser's own controls. YouTube items
- * resolve a real audio URL on demand.
+ * so the user can save it with the browser's own controls.
  */
-export async function downloadEpisode(ep: Episode, feedIsYT: boolean): Promise<DownloadOutcome> {
-  let src = httpsOnly(ep.episodeUrl || '');
-  if (!src && feedIsYT && ep.ytId) {
-    try {
-      const u = await ytServiceAudioUrl(ep.ytId);
-      if (u) {
-        ep.episodeUrl = u;
-        src = httpsOnly(u);
-      }
-    } catch {
-      /* resolution failed — reported below */
-    }
-  }
+export function downloadEpisode(ep: Episode): DownloadOutcome {
+  const src = httpsOnly(ep.episodeUrl || '');
   if (!src) return 'no-url';
 
   const w = window.open(src, '_blank', 'noopener,noreferrer');

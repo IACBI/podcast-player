@@ -29,38 +29,25 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] 15/30/60 dk seçenekleri ayarlanabilir; seçim durumda görünür.
 - [ ] Süre dolunca oynatma durur.
 
-## 4. YouTube
-
-- [ ] Tek video linki yapıştır → Worker `<audio>` akışı olarak çalar. Ses çözülemezse
-      **oynatılamıyor** mesajı görünür (iframe yedeği yoktur — reklam çalar ve ekran
-      kilitlenince susardı).
-- [ ] Playlist linki yapıştır → liste bölüm olarak gelir, başlıklar ve süreler dolu.
-- [ ] Kanal linki yapıştır → 15'ten çok daha fazla video listelenir (Worker Innertube ile
-      sayfalar; ölçüm: ortalama ~150 bölüm).
-- [ ] Worker kanalın sonuna ulaşamazsa durum satırında **"daha eski bölümler yüklenemedi"**
-      yazar; hiç ulaşamazsa Atom yedeğiyle son ~15 bölüm gelir (aynı not ile).
-- [ ] En yeni bölümlerde tarih görünür (Atom feed'inden birleştirilir); daha eskilerde
-      tarih boştur — YouTube yalnızca "1 hour ago" gibi göreli metin verir, uydurulmaz.
-
-## 5. Abonelikler (favoriler)
+## 4. Abonelikler (favoriler)
 
 - [ ] Podcast'i favorile → **Kütüphane → Abonelikler** sekmesinde kart olarak görünür.
 - [ ] Favoriden kaldır → karttan düşer.
 - [ ] Favori karta tıkla → podcast açılır, son çalınan bölüm hatırlanır (`pp_last_*`).
 - [ ] Aboneliği olan podcast'ler **Ana Sayfa**'daki abonelikler ızgarasında da görünür.
 
-## 6. İndirme
+## 5. İndirme
 
 - [ ] Bölüm indirme düğmesi mp3'ü indirir (https-only; dosya adı Unicode-güvenli).
 - [ ] İndirilemeyen bölümde kullanıcıya görünür hata (alert — v2'de toast olacak).
 
-## 7. Deep link'ler
+## 6. Deep link'ler
 
 - [ ] `?podcast=<appleId>` → podcast doğrudan açılır.
 - [ ] `?rss=<url>` → RSS doğrudan açılır.
-- [ ] `?yt=<token>` → YouTube kaynağı doğrudan açılır.
+- [ ] `?yt=<token>` → YouTube desteği kaldırıldı; link ana sayfaya düşer, hata vermez.
 
-## 8. Ayarlar
+## 7. Ayarlar
 
 - [ ] **Ayarlar** artık sekme çubuğu/kenar çubuğundan açılan tam sayfa bir görünüm (eski modal `<dialog>` değil); geri tuşu/kenar çubuğundan diğer sekmelere geçilebilir.
 - [ ] Hız, atlama süreleri, auto-next, resume ayarları kalıcıdır (yenile → korunur).
@@ -71,14 +58,14 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] "İlerlemeyi temizle" ve "Tümünü temizle" çalışır (onaylı, styled confirm dialog).
 - [ ] Depolama satırı kullanım gösterir; "İndirilenleri Sil" onaylı çalışır.
 
-## 9. Tema ve dil
+## 8. Tema ve dil
 
 - [ ] 4 tema: **Otomatik / Dark / Light / OLED Black** — hepsi Sinyal paletiyle (sıcak antrasit yüzeyler) tutarlı görünür.
 - [ ] Ayarlar ekranından dil değiştir: **tr / en** tam kontrol; diğerlerinden en az biri spot kontrol.
 - [ ] **ar** seçince RTL düzeni doğru (yönler, hizalar, sekme çubuğu/kenar çubuğu dahil).
 - [ ] İlk açılışta tarayıcı diline göre otomatik dil.
 
-## 10. Klavye
+## 9. Klavye
 
 - [ ] Podcast ekranı açıkken **veya** Şimdi Çalıyor paneli açıkken: Space play/pause; ←/→ seek; ↑/↓ önceki/sonraki bölüm.
 - [ ] Bir input/select/textarea'ya odaklanmışken bu kısayollar tetiklenmez.
@@ -86,18 +73,18 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] Şimdi Çalıyor paneli açıkken Esc paneli kapatır (geçmişe eklenmez — tek adımda kapanır).
 - [ ] Bölüm listesinde klavyeyle gezinme + Enter ile çalma.
 
-## 11. PWA
+## 10. PWA
 
 - [ ] `npx serve` üzerinden SW kaydolur; offline'da uygulama kabuğu açılır.
 - [ ] Manifest yüklenir, yükleme istemi (install prompt) gelir.
 
-## 12. Dayanıklılık
+## 11. Dayanıklılık
 
 - [ ] Ağ yokken arama → görünür hata, sonsuz spinner yok.
 - [ ] CORS proxy'lerinin biri ölüyken RSS yine yüklenir (fallback yarışı).
 - [ ] localStorage dolu senaryosunda uygulama çökmez (quota pruning).
 
-## 13. Offline & indirmeler (v3)
+## 12. Offline & indirmeler (v3)
 
 - [ ] Bölümün ⤓ düğmesi → "kaydedildi" bildirimi; düğme ✓ olur.
 - [ ] DevTools → Network → Offline → sayfayı yenile: uygulama açılır, feed önbellekten listelenir, indirilen bölüm çalar **ve** seek eder.
@@ -106,7 +93,7 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] CORS engelli bir feed'de indirme → dosya indirme fallback bildirimi.
 - [ ] OPML dışa aktar → içe aktar → abonelikler aynı (round-trip).
 
-## 14. Mini oynatıcı, Şimdi Çalıyor paneli & kuyruk
+## 13. Mini oynatıcı, Şimdi Çalıyor paneli & kuyruk
 
 - [ ] Bölüm çalarken "Geri" → ana ekran (veya önceki sekme); **çalma devam eder**, altta kalıcı mini dock görünür.
 - [ ] Mini dock'taki oynat/duraklat yerinde çalışır (gezinmez, panel açmaz).
@@ -120,7 +107,7 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] Kuyruk satırları hangi podcast'ten geldiğini gösterir; başka bir feed'in bölümü
       sıradaysa bölüm bitince o feed yüklenip çalınır.
 
-## 15. Masaüstü düzeni & tema
+## 14. Masaüstü düzeni & tema
 
 - [ ] ≥900px: sekme çubuğu yerine solda **kalıcı kenar çubuğu** (Ana Sayfa/Ara/Kütüphane/Ayarlar); aktif sekme vurgulanır (`aria-current="page"`).
 - [ ] ≥900px: mini dock kenar çubuğunun sağında, tam genişlikte konumlanır (kenar çubuğunu örtmez).
@@ -128,7 +115,7 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] Tema "Otomatik": işletim sistemi teması değişince uygulama canlı uyar (4 tema: Dark/Light/OLED Black + Otomatik).
 - [ ] Bölüm satırlarında ilerleme çizgisi; bitenler soluk + ✓.
 
-## 16. Responsive & erişilebilirlik denetimi
+## 15. Responsive & erişilebilirlik denetimi
 
 Ekran görüntüsü altyapısı: `scripts/shot.cjs` (headless Edge + vite preview; önce `npm run build`).
 
@@ -140,18 +127,18 @@ Ekran görüntüsü altyapısı: `scripts/shot.cjs` (headless Edge + vite previe
 - [ ] Klavye: Tab ile arama sonuçları gezinilir, Enter/Space açar; select/range odak halkası görünür; sekme çubuğu/kenar çubuğu öğeleri Tab ile erişilebilir, aktif öğe `aria-current="page"` taşır; Şimdi Çalıyor paneli kapatma düğmesi anlamlı `aria-label` taşır.
 - [ ] Arama hatasında kırmızı hata kutusu + "Tekrar dene" düğmesi; boş sonuçta boş durum mesajı; yükleme sırasında "Aranıyor..." kutusu.
 
-## 17. Worker & derin linkler
+## 16. Worker & derin linkler
 
 - [ ] `npm run worker:dev` açıkken RSS worker üzerinden gelir (Network'te `/v1/feed`).
 - [ ] Worker kapalıyken aynı feed halka açık proxy'lerle yine yüklenir.
 - [ ] `?resume=1` → son açılan feed otomatik açılır (mağaza kısayolu).
 - [ ] `?view=search` / `?view=library` / `?view=queue` / `?view=settings` → ilgili görünüm doğrudan açılır (soğuk yükleme).
-- [ ] Legacy derin linkler (`?podcast=`, `?rss=`, `?yt=`) hâlâ çalışır — 3.x'ten paylaşılan bir link 4.0'da da aynı feed'i açar.
+- [ ] Legacy derin linkler (`?podcast=`, `?rss=`) hâlâ çalışır — 3.x'ten paylaşılan bir link bugün de aynı feed'i açar.
 - [ ] Deep-link ile gelinen sayfada (feed **veya** `?view=`) "Geri" → siteden çıkmaz, tek adımda ana ekrana döner (tarayıcı geri tuşu **ve** uygulama içi geri tuşu).
 - [ ] Bir view'dan başka bir view'a geçip sonra geri tuşuna basınca da tek adımda ana ekrana dönülür (aradaki view geçmişte "yığılmaz").
 - [ ] PWA manifest kısayolu "Ara" → `?view=search` açar (eski davranış: boş başlangıç URL'i).
 
-## 18. Oynatma regresyon matrisi
+## 17. Oynatma regresyon matrisi
 
 Her kaynak × eylem kombinasyonu en az bir kez denenir; ✓/✗ olarak işaretlenir.
 
@@ -159,12 +146,10 @@ Her kaynak × eylem kombinasyonu en az bir kez denenir; ✓/✗ olarak işaretle
 |---|---|---|---|---|---|---|---|---|---|---|
 | RSS | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 | iTunes (RSS'e çözümlenir) | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| YouTube — tekil video | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
-| YouTube — playlist | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] | [ ] |
 
 Notlar:
 - **Kuyruk auto-next'i ezer**: bir bölüm kuyruğa eklenmişken çalınan bölüm biterse, auto-next ayarı açık/kapalı fark etmeksizin kuyruktaki bölüm çalar (`playback-controller.ts` — `dequeueNext` her zaman `autoNext` kontrolünden önce denenir).
-- **Çevrimdışı indir+çal**: DevTools → Network → Offline ile denenir; indirilen bölüm hem çalar hem seek eder. Sesi çözülemeyen YouTube videoları indirilemez — bu durum ayrı satırda "N/A" olarak işaretlenebilir.
+- **Çevrimdışı indir+çal**: DevTools → Network → Offline ile denenir; indirilen bölüm hem çalar hem seek eder.
 - **Medya tuşları**: kilit ekranı/bildirim paneli play/pause/next/prev; başlık+kapak görünür.
 - **Mini transport**: mini dock üzerinde geri/ileri sarma + oynat/duraklat (≥640px'te önceki/sonraki ortada; uyku zamanlayıcısı + hız sağ kümede, panel seçicileriyle senkron); alt ilerleme çizgisi dokun/sürükle ile sarar. Başlık alanı veya genişletme oku (Enter/Space dahil) yeni bölüm başlatmadan Şimdi Çalıyor panelini açar.
 - **Oynatma gezinmeden bağımsız**: bir bölüm çalarken başka bir podcast açmak (daha önce
@@ -175,6 +160,6 @@ Notlar:
 ### Yeni gezinme kontrolleri
 
 - [ ] Sekme çubuğu (mobil) / kenar çubuğu (masaüstü): Ana Sayfa/Ara/Kütüphane/Ayarlar arasında geçiş, aktif sekme vurgusu.
-- [ ] `?view=` derin linkleri (yukarıdaki bölüm 17) soğuk yükleme + uygulama-içi gezinme ile çalışır.
+- [ ] `?view=` derin linkleri (yukarıdaki bölüm 16) soğuk yükleme + uygulama-içi gezinme ile çalışır.
 - [ ] Geri tuşu tek-adım-ana-ekran kuralı: feed → geri → ana ekran; view → geri → ana ekran; view → view → geri → ana ekran (asla iki adım gerekmez).
 - [ ] Esc: Şimdi Çalıyor paneli açıkken kapatır; Onay diyaloğu açıkken iptal eder (odak Vazgeç'te varsayılan).

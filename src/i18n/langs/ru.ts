@@ -16,7 +16,7 @@ function plural(n: number, one: string, few: string, many: string): string {
 const eps = (n: number): string => plural(n, 'выпуск', 'выпуска', 'выпусков');
 
 const ru: Lang = {
-  search_placeholder: "Название подкаста, ссылка Apple Podcasts или YouTube...",
+  search_placeholder: "Название подкаста, ссылка Apple Podcasts или адрес RSS...",
   btn_search: "Найти →",
   btn_back: "← Назад",
   now_playing: "СЕЙЧАС ИГРАЕТ",
@@ -44,7 +44,6 @@ const ru: Lang = {
   btn_retry: "Повторить",
   btn_queue: "В очередь",
   sec_podcasts: "Подкасты",
-  sec_youtube: "YouTube",
   queued: "Добавлено в очередь",
   confirm_clear_progress: "Весь прогресс будет удалён. Вы уверены?",
   confirm_clear_all: "Все настройки и прогресс будут удалены. Вы уверены?",
@@ -129,10 +128,6 @@ const ru: Lang = {
   np_notes: "Описание выпуска",
   dl_label: "Скачать выпуск",
   rss_invalid: "Некорректный RSS-канал.",
-  yt_video: "Видео YouTube",
-  yt_invalid: "Некорректная ссылка YouTube.",
-  yt_no_stream: "Для этого видео нет аудиопотока без рекламы, поэтому воспроизвести его нельзя.",
-  yt_rate_limited: "Сейчас слишком много запросов — подожди немного и нажми воспроизведение снова.",
   limit_note: "не удалось загрузить более старые выпуски",
   limit_of_total: (n) => `из ${n} в архиве`,
   s_storage: "Хранилище",

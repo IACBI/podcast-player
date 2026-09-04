@@ -4,7 +4,7 @@ import { resolveFeed } from './resolve';
 import type { ResolveOptions } from './resolve';
 import { DEFAULT_SETTINGS, settings } from '../state/settings';
 
-const OPTS: ResolveOptions = { ytVideoTitle: 'YouTube video' };
+const OPTS: ResolveOptions = {};
 
 function jsonRes(body: unknown): Response {
   return new Response(JSON.stringify(body), {

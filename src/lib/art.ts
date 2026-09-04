@@ -24,21 +24,6 @@ const MAX_PX = 1600;
 const MZ_HOST = /(?:^|\.)mzstatic\.com$/i;
 const MZ_SEGMENT = /^(\d+)x(\d+)([a-z]{0,3}(?:-\d+)?)\.(jpg|jpeg|png|webp)$/i;
 
-/**
- * YouTube thumbnails come in a fixed ladder. Only mq/hq exist for *every*
- * video — `sddefault` and `maxresdefault` 404 on older uploads (verified
- * against jNQXAC9IVRw), and a 404 inside a srcset renders a broken image.
- */
-const YT_HOST = /^i\d*\.ytimg\.com$/i;
-const YT_PATH = /^\/vi(?:_webp)?\/([\w-]{11})\/\w+\.(?:jpg|webp)$/;
-const YT_LADDER = [
-  { name: 'default', width: 120 },
-  { name: 'mqdefault', width: 320 },
-  { name: 'hqdefault', width: 480 },
-] as const;
-/** Largest rendition guaranteed to exist for every video. */
-const YT_TOP = YT_LADDER[2];
-
 export interface ArtOptions {
   /** Ask for the WebP rendition. Yields '' when the host has no WebP variant. */
   webp?: boolean;
@@ -69,14 +54,6 @@ function resolve(src: string, px: number, webp: boolean): Rendition | null {
     const ext = webp ? 'webp' : (m[4] ?? 'jpg');
     u.pathname = `${u.pathname.slice(0, cut + 1)}${want}x${want}${crop}.${ext}`;
     return { url: u.href, width: want };
-  }
-
-  if (YT_HOST.test(u.hostname)) {
-    const m = YT_PATH.exec(u.pathname);
-    if (!m) return null;
-    const step = YT_LADDER.find((s) => s.width >= want) ?? YT_TOP;
-    u.pathname = `/${webp ? 'vi_webp' : 'vi'}/${m[1]}/${step.name}.${webp ? 'webp' : 'jpg'}`;
-    return { url: u.href, width: step.width };
   }
 
   return null;

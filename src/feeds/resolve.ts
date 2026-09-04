@@ -2,18 +2,12 @@ import type { FeedRequest, ResolvedFeed } from './types';
 import { lookupPodcast } from './itunes';
 import { fetchTextProxied } from './proxy-chain';
 import { parseRss } from './rss-parser';
-import { resolveYouTube } from '../youtube/resolver';
 
 export interface ResolveOptions {
   signal?: AbortSignal;
-  /** Localized placeholder for a single-video pseudo-feed. */
-  ytVideoTitle: string;
 }
 
-/**
- * One entry point for every feed source — replaces the legacy trio of
- * loadPodcast / loadRss / loadYouTube data paths.
- */
+/** One entry point for every feed source. */
 export async function resolveFeed(req: FeedRequest, opts: ResolveOptions): Promise<ResolvedFeed> {
   switch (req.kind) {
     case 'itunes': {
@@ -30,7 +24,5 @@ export async function resolveFeed(req: FeedRequest, opts: ResolveOptions): Promi
         limited: false,
       };
     }
-    case 'yt':
-      return resolveYouTube(req.info, opts.signal, { placeholderTitle: opts.ytVideoTitle });
   }
 }

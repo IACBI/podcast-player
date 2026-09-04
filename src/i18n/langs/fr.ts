@@ -1,7 +1,7 @@
 import type { Lang } from '../types';
 
 const fr: Lang = {
-  search_placeholder: "Nom du podcast, lien Apple Podcasts ou YouTube...",
+  search_placeholder: "Nom du podcast, lien Apple Podcasts ou URL RSS...",
   btn_search: "Rechercher →",
   btn_back: "← Retour",
   now_playing: "EN COURS",
@@ -29,7 +29,6 @@ const fr: Lang = {
   btn_retry: "Réessayer",
   btn_queue: "Ajouter à la file",
   sec_podcasts: "Podcasts",
-  sec_youtube: "YouTube",
   queued: "Ajouté à la file",
   confirm_clear_progress: "Toute la progression sera supprimée. Confirmer ?",
   confirm_clear_all: "Tous les paramètres et la progression seront supprimés. Confirmer ?",
@@ -114,10 +113,6 @@ const fr: Lang = {
   np_notes: "Notes de l’épisode",
   dl_label: "Télécharger l’épisode",
   rss_invalid: "Flux RSS invalide.",
-  yt_video: "Vidéo YouTube",
-  yt_invalid: "Lien YouTube invalide.",
-  yt_no_stream: "Aucun flux audio sans publicité n’est disponible pour cette vidéo, elle ne peut donc pas être lue.",
-  yt_rate_limited: "Trop de requêtes en ce moment — patiente un instant puis relance la lecture.",
   limit_note: "les épisodes plus anciens n’ont pas pu être chargés",
   limit_of_total: (n) => `sur ${n} dans les archives`,
   s_storage: "Stockage",

@@ -3,7 +3,6 @@ import { artAt, artSrcset } from './art';
 
 const MZ =
   'https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/ab/64/66/abc/mza_150848.jpg/100x100bb.jpg';
-const YT = 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg';
 const RSS = 'https://megaphone.imgix.net/podcasts/abc/image/Tile.jpg';
 
 describe('artAt — mzstatic', () => {
@@ -28,29 +27,6 @@ describe('artAt — mzstatic', () => {
   it('leaves a non-rendition path alone', () => {
     const odd = 'https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/source';
     expect(artAt(odd, 600)).toBe(odd);
-  });
-});
-
-describe('artAt — i.ytimg.com', () => {
-  it('snaps up the fixed ladder', () => {
-    expect(artAt(YT, 88)).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg');
-    expect(artAt(YT, 300)).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg');
-    expect(artAt(YT, 480)).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
-  });
-
-  it('downgrades an oversized stored URL for small rows', () => {
-    // Feeds store hqdefault; a 44px row should not pull 480px of thumbnail.
-    expect(artSrcset(YT, [44, 88])).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg 120w');
-  });
-
-  it('never climbs past hqdefault — sd/maxres 404 on older uploads', () => {
-    expect(artAt(YT, 1024)).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
-  });
-
-  it('uses the vi_webp path for webp', () => {
-    expect(artAt(YT, 480, { webp: true })).toBe(
-      'https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/hqdefault.webp',
-    );
   });
 });
 
@@ -86,9 +62,11 @@ describe('artSrcset', () => {
     );
   });
 
-  it('deduplicates widths that collapse onto one ladder step', () => {
-    // 480 and 1024 both resolve to hqdefault; it must appear once.
-    expect(artSrcset(YT, [480, 1024])).toBe('https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg 480w');
+  it('deduplicates widths that collapse onto the same rendition', () => {
+    // Both are clamped to MAX_PX, so the entry must appear once.
+    expect(artSrcset(MZ, [1600, 2400])).toBe(
+      MZ.replace('100x100bb.jpg', '1600x1600bb.jpg') + ' 1600w',
+    );
   });
 
   it('returns "" for hosts that cannot be upgraded', () => {
