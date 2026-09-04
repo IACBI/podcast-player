@@ -137,7 +137,7 @@ then set `VITE_API_BASE` to the workers.dev URL at build time. See
 ### 📦 Distribution
 
 - **Windows**: a Tauri v2 shell (`desktop/`) wraps the live site in WebView2 —
-  a ~4 MB NSIS installer published on
+  a ~1.8 MB NSIS installer published on
   [GitHub Releases](https://github.com/IACBI/seseri/releases/latest); the app
   updates itself with every web deploy.
 - **Google Play**: TWA package produced from the live PWA with
@@ -233,7 +233,7 @@ uygulama üçünü yarıştırıp ilk cevabı ayrıştırır.
 ### 📦 Dağıtım
 
 - **Windows**: `desktop/` altındaki Tauri v2 kabuğu canlı siteyi WebView2
-  içinde açar — ~4 MB'lık NSIS kurulumu
+  içinde açar — ~1,8 MB'lık NSIS kurulumu
   [GitHub Releases](https://github.com/IACBI/seseri/releases/latest)'te;
   uygulama her web dağıtımıyla kendini günceller.
 - **Google Play**: canlı PWA'dan [PWABuilder](https://www.pwabuilder.com/)
