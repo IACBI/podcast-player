@@ -17,7 +17,10 @@ export type EngineEvent =
   | { type: 'pause' }
   | { type: 'ended' }
   | { type: 'timeupdate'; current: number; duration: number }
-  | { type: 'error' };
+  /** Data ran out mid-playback, or the element is waiting on the network. */
+  | { type: 'stalled' }
+  /** `code` is a `MediaError` constant: 2 is NETWORK, 3 DECODE, 4 SRC_NOT_SUPPORTED. */
+  | { type: 'error'; code: number };
 
 type Listener = (e: EngineEvent) => void;
 
@@ -33,6 +36,12 @@ function emit(e: EngineEvent): void {
 }
 
 export const audio = new Audio();
+// iOS refuses to play a media element it considers "fullscreen-capable" while
+// the tab is backgrounded; `playsinline` is what opts out of that. `auto`
+// preload lets the element keep reading ahead once the screen is off, which is
+// exactly the window in which a network hiccup would otherwise end playback.
+audio.setAttribute('playsinline', '');
+audio.preload = 'auto';
 
 export function pbPaused(): boolean {
   return audio.paused;
@@ -44,7 +53,9 @@ export function pbDuration(): number {
   return audio.duration;
 }
 export function pbPlay(): void {
-  audio.play().catch(() => {
+  // `play()` predates its own promise; a browser that returns undefined here
+  // would otherwise throw on `.catch` instead of merely failing to start.
+  audio.play()?.catch(() => {
     /* autoplay blocked — user will press play */
   });
 }
@@ -67,6 +78,23 @@ export function pbSetRate(r: number): void {
   audio.playbackRate = r;
 }
 
+/** End of the buffered range covering `at`, or `at` itself when nothing is buffered. */
+export function pbBufferedEnd(at: number = audio.currentTime): number {
+  const b = audio.buffered;
+  for (let i = 0; i < b.length; i++) {
+    if (at >= b.start(i) - 0.5 && at <= b.end(i) + 0.5) return b.end(i);
+  }
+  return at;
+}
+
+export function pbReadyState(): number {
+  return audio.readyState;
+}
+
+export function pbSrc(): string {
+  return audio.src;
+}
+
 // <audio> events → engine events (throttled timeupdate ~4 fps like legacy)
 let lastUi = 0;
 audio.addEventListener('timeupdate', () => {
@@ -78,4 +106,9 @@ audio.addEventListener('timeupdate', () => {
 audio.addEventListener('play', () => emit({ type: 'play' }));
 audio.addEventListener('pause', () => emit({ type: 'pause' }));
 audio.addEventListener('ended', () => emit({ type: 'ended' }));
-audio.addEventListener('error', () => emit({ type: 'error' }));
+audio.addEventListener('error', () => emit({ type: 'error', code: audio.error?.code ?? 0 }));
+// `stalled` and `waiting` are the only warning the element gives before a
+// backgrounded range request dies quietly; `suspend` is deliberately NOT
+// mapped here — it also fires on a healthy "buffer is full" pause.
+audio.addEventListener('stalled', () => emit({ type: 'stalled' }));
+audio.addEventListener('waiting', () => emit({ type: 'stalled' }));

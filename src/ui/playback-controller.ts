@@ -34,6 +34,8 @@ import {
   pbPlay,
   pbSeekTo,
 } from '../player/engine';
+import { initRecovery, noteUserIntent, resetRecovery } from '../player/recovery';
+import { initPrefetch, prefetchEpisode } from '../player/prefetch';
 import { downloadEpisode } from '../player/downloads';
 import { downloadOffline, offlineAudioUrl, removeDownload } from '../player/offline';
 import { getCachedFeed, putCachedFeed, putResume, listDownloads } from '../storage/db';
@@ -43,7 +45,7 @@ import { playing, nowPlayingLabel, type PlayingSession } from '../player/session
 import { dequeueNext, enqueue, queuePosition, removeFromQueue, type QueueItem } from '../state/queue';
 import { settings } from '../state/settings';
 import { refreshSubscription } from '../storage/subscriptions';
-import { ytServiceAudioUrl } from '../youtube/service';
+import { ytResolveAudio } from '../youtube/service';
 import { consumeSleepAtEpisodeEnd } from '../player/sleep-timer';
 import { PRIVATE_FEED_ERROR } from '../feeds/credential-url';
 import { API_BASE, PROXIES_DISABLED_ERROR, svcJson } from '../feeds/proxy-chain';
@@ -259,7 +261,9 @@ export function createPlaybackController(): PlaybackController {
     };
 
     void (async () => {
-      const dl = new Set((await listDownloads()).map((d) => d.id));
+      // Only user downloads light up the row's download state; a copy the
+      // prefetcher made is invisible bookkeeping.
+      const dl = new Set((await listDownloads()).filter((d) => !d.ephemeral).map((d) => d.id));
       if (!sig.aborted) patch({ downloadedIds: dl });
 
       // Paint the cached copy instantly, then refresh from the network.
@@ -398,6 +402,7 @@ export function createPlaybackController(): PlaybackController {
 
     playAbort?.abort();
     playAbort = new AbortController();
+    noteUserIntent(autoplay);
     playing.set(next);
     markPlayingRow();
 
@@ -462,6 +467,14 @@ export function createPlaybackController(): PlaybackController {
       currentBlobUrl = null;
     }
     if (isBlob) currentBlobUrl = safe;
+    resetRecovery(); // a new source starts with a clean failure budget
+    if (!isBlob) {
+      // Streaming from the network — start pulling a local copy alongside it.
+      // A blob source is already local, so there is nothing to prefetch.
+      const p = playing();
+      const ep = p?.episodes[p.index];
+      if (p && ep && String(ep.trackId) === id) prefetchEpisode(ep, p.feedId, p.isYT);
+    }
     audio.src = safe;
     audio.load();
     const applyPrefs = (): void => {
@@ -477,9 +490,29 @@ export function createPlaybackController(): PlaybackController {
     if (audio.readyState >= 2) applyPrefs();
     else audio.addEventListener('canplay', applyPrefs, { once: true });
     if (autoplay) {
-      audio.play().catch(() => {
+      audio.play()?.catch(() => {
         /* autoplay blocked */
       });
+    }
+  }
+
+  /**
+   * One YouTube id → one proxied audio URL. Split out of `ytResolveAndPlay`
+   * because the recovery watchdog needs the same call to mint a replacement
+   * URL mid-episode, and a second copy of it would drift.
+   */
+  async function resolveYtAudioUrl(ytId: string, sig?: AbortSignal): Promise<string | null> {
+    return (await resolveYt(ytId, sig)).url;
+  }
+
+  async function resolveYt(
+    ytId: string,
+    sig?: AbortSignal,
+  ): Promise<{ url: string | null; status: number }> {
+    try {
+      return await ytResolveAudio(ytId, sig);
+    } catch {
+      return { url: null, status: 0 };
     }
   }
 
@@ -499,17 +532,19 @@ export function createPlaybackController(): PlaybackController {
     }
 
     patch({ status: { kind: 'loading', message: t('status_loading') } });
-    let url: string | null = null;
-    try {
-      url = await ytServiceAudioUrl(ep.ytId ?? '', sig);
-    } catch {
-      url = null;
-    }
+    const { url, status } = await resolveYt(ep.ytId ?? '', sig);
     if (playing()?.trackId !== id) return; // user moved on
     if (url) {
       ep.episodeUrl = url; // real media URL → download works too
       startAudio(url, id, autoplay);
       patch({ status: okStatus(session().episodes.length, session().limited, session().total) });
+      return;
+    }
+    // 429 is the Worker's abuse budget, not a missing stream: the video is
+    // fine and waiting fixes it, so say that instead of declaring it dead.
+    if (status === 429) {
+      patch({ status: { kind: 'error', message: t('yt_rate_limited') } });
+      toast(t('yt_rate_limited'), 'error');
       return;
     }
     // No stream. There used to be a `youtube-nocookie` iframe fallback here,
@@ -520,10 +555,48 @@ export function createPlaybackController(): PlaybackController {
     toast(t('yt_no_stream'), 'error');
   }
 
+  /**
+   * Swap in a freshly resolved URL without disturbing the session, the queue or
+   * the Media Session notification: same track, same position, same rate. Used
+   * only by the recovery watchdog.
+   */
+  function resumeAudioAt(url: string, positionSec: number): void {
+    const safe = safeMediaSrc(url);
+    if (!safe) return;
+    // `reresolve` may hand back a blob: URL when a download landed mid-episode,
+    // so this path owes the same revocation bookkeeping as `startAudio`.
+    if (currentBlobUrl && currentBlobUrl !== safe) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
+    if (safe.startsWith('blob:')) currentBlobUrl = safe;
+    const rate = audio.playbackRate;
+    audio.src = safe;
+    audio.load();
+    audio.addEventListener(
+      'loadedmetadata',
+      () => {
+        if (Number.isFinite(positionSec) && positionSec > 0) audio.currentTime = positionSec;
+        audio.playbackRate = rate;
+        // Recovery only ever runs while the user's intent is "playing", so
+        // there is no paused case to preserve here.
+        audio.play()?.catch(() => {
+          /* the OS may refuse while backgrounded; the next attempt retries */
+        });
+      },
+      { once: true },
+    );
+  }
+
   function togglePlay(): void {
     if (!playing() || !audio.src) return;
-    if (pbPaused()) pbPlay();
-    else pbPause();
+    if (pbPaused()) {
+      noteUserIntent(true);
+      pbPlay();
+    } else {
+      noteUserIntent(false);
+      pbPause();
+    }
   }
 
   function seekRel(seconds: number): void {
@@ -681,6 +754,7 @@ export function createPlaybackController(): PlaybackController {
 
   function reset(): void {
     playAbort?.abort();
+    noteUserIntent(false);
     audio.pause();
     if (currentBlobUrl) {
       audio.removeAttribute('src');
@@ -692,6 +766,38 @@ export function createPlaybackController(): PlaybackController {
     document.body.classList.remove('is-playing');
     markPlayingRow();
   }
+
+  // ── recovery watchdog ────────────────────────────────────────────
+  // Re-mints the proxied URL and continues from the same second when a range
+  // request dies mid-episode — the failure mode that ends backgrounded
+  // playback. RSS enclosures get the same treatment with their original URL,
+  // which is enough for a CDN blip.
+  // Same `resumeAudioAt` seam as recovery: the handoff to a completed local
+  // copy is exactly a source swap that must not disturb anything else.
+  initPrefetch({
+    handoff: resumeAudioAt,
+    currentTrackId: () => playing()?.trackId ?? null,
+    currentPosition: () => audio.currentTime,
+  });
+
+  initRecovery({
+    reresolve: async () => {
+      const p = playing();
+      if (!p) return null;
+      const ep = p.episodes[p.index];
+      if (!ep) return null;
+      const local = await offlineAudioUrl(p.trackId);
+      if (local) return local; // a download landed meanwhile — best possible answer
+      if (p.isYT) return ep.ytId ? await resolveYtAudioUrl(ep.ytId) : null;
+      return httpsOnly(ep.episodeUrl || '') || null;
+    },
+    resume: resumeAudioAt,
+    onGiveUp: () => {
+      patch({ status: { kind: 'error', message: t('audio_err') } });
+      setPlaybackState('paused');
+      document.body.classList.remove('is-playing');
+    },
+  });
 
   // ── engine wiring ────────────────────────────────────────────────
   onEngine((e) => {
@@ -729,7 +835,9 @@ export function createPlaybackController(): PlaybackController {
         break;
       }
       case 'error':
-        patch({ status: { kind: 'error', message: t('audio_err') } });
+        // Deliberately quiet: the recovery watchdog gets the same event and is
+        // already re-resolving. Only `onGiveUp` below surfaces a failure, so a
+        // survivable hiccup no longer paints a dead player.
         setPlaybackState('paused');
         document.body.classList.remove('is-playing');
         break;

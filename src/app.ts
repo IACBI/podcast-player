@@ -1,5 +1,7 @@
 import { applyLang, t } from './i18n';
 import { initMediaSession } from './player/media-session';
+import { checkPlaybackHealth } from './player/recovery';
+import { initKeepAwake } from './player/keep-awake';
 import { initSleepTimer } from './player/sleep-timer';
 import { initShortcuts } from './ui/shortcuts';
 import { requestPersistence } from './player/offline';
@@ -149,8 +151,19 @@ export function boot(): void {
   window.addEventListener('beforeunload', saveProgressNow);
   window.addEventListener('pagehide', saveProgressNow);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) saveProgressNow();
+    if (document.hidden) {
+      saveProgressNow();
+      return;
+    }
+    // Coming back to the foreground is the only moment iOS lets us repair
+    // anything: WebKit may have suspended the page mid-stream and killed the
+    // element's in-flight range request without ever firing `error`.
+    checkPlaybackHealth();
   });
+  // Page Lifecycle: Chrome discards a frozen background tab's network state,
+  // and `resume` is the one signal that it happened.
+  document.addEventListener('resume', () => checkPlaybackHealth());
+  initKeepAwake();
 
   // ── initial route (deep links preserved) ─────────────────────────
   const route = parseLocation();

@@ -22,6 +22,13 @@ export interface DownloadRecord {
   title: string;
   bytes: number;
   addedAt: number;
+  /**
+   * True for a copy the app cached on its own to survive a backgrounded
+   * network, false/absent for one the user asked for. Only ephemeral copies are
+   * ever evicted, and the Downloads list hides them — deleting something the
+   * user deliberately saved to reclaim space would be a betrayal.
+   */
+  ephemeral?: boolean;
 }
 
 /**

@@ -102,7 +102,26 @@ export async function ytServiceAudioUrl(
   videoId: string,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  if (!API_BASE) return null;
+  return (await ytResolveAudio(videoId, signal)).url;
+}
+
+export interface YtResolveResult {
+  url: string | null;
+  /**
+   * The Worker's status, 0 when it could not be reached. Callers that show the
+   * user something need it: 429 (the abuse budget) and 502 (no stream exists)
+   * are different problems, and telling someone their video is unplayable when
+   * they simply need to wait a minute is wrong.
+   */
+  status: number;
+}
+
+/** As `ytServiceAudioUrl`, but says why it failed. */
+export async function ytResolveAudio(
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<YtResolveResult> {
+  if (!API_BASE) return { url: null, status: 0 };
   try {
     const res = await fetchWithTimeout(
       `${API_BASE}/v1/yt/resolve?id=${encodeURIComponent(videoId)}`,
@@ -111,10 +130,11 @@ export async function ytServiceAudioUrl(
     );
     if (res.ok) {
       const j = (await res.json()) as { audioUrl?: string };
-      if (j.audioUrl) return j.audioUrl;
+      if (j.audioUrl) return { url: j.audioUrl, status: res.status };
     }
+    return { url: null, status: res.status };
   } catch (e) {
     if (signal?.aborted) throw e;
   }
-  return null;
+  return { url: null, status: 0 };
 }

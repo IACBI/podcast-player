@@ -213,7 +213,9 @@ export function initLibraryView(deps: LibraryViewDeps): View {
 
   async function refreshDownloads(): Promise<void> {
     const [recs, info] = await Promise.all([listDownloads(), storageInfo()]);
-    dlRecords = recs.sort((a, b) => b.addedAt - a.addedAt);
+    // Self-managed playback copies are not the user's downloads and must not
+    // appear here — they would look like files they never asked for.
+    dlRecords = recs.filter((r) => !r.ephemeral).sort((a, b) => b.addedAt - a.addedAt);
     dlStorage = info;
     renderDownloads();
   }

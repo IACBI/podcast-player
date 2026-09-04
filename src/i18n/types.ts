@@ -76,6 +76,11 @@ export interface Lang {
   s_privacy: string;
   s_allow_proxies: string;
   s_allow_proxies_sub: string;
+  s_prefetch: string;
+  s_prefetch_sub: string;
+  s_prefetch_always: string;
+  s_prefetch_wifi: string;
+  s_prefetch_never: string;
   dur_h: string;
   dur_m: string;
   storage_full: string;
@@ -114,6 +119,7 @@ export interface Lang {
   yt_video: string;
   yt_invalid: string;
   yt_no_stream: string;
+  yt_rate_limited: string;
   limit_note: string;
   limit_of_total: LangFn;
   s_storage: string;

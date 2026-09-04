@@ -17,7 +17,14 @@ import { local } from '../../storage/local';
 import { exportOpml, parseOpml } from '../../storage/opml';
 import { subscriptions, toggleSubscription, isSubscribed } from '../../storage/subscriptions';
 import { pbSetRate } from '../../player/engine';
-import { settings, setSetting, type Settings, type SortDir, type ThemeName } from '../../state/settings';
+import {
+  settings,
+  setSetting,
+  type PrefetchMode,
+  type Settings,
+  type SortDir,
+  type ThemeName,
+} from '../../state/settings';
 import { fmtBytes } from '../../lib/format';
 import { toast } from '../toast';
 import { confirmDialog } from '../confirm';
@@ -160,6 +167,18 @@ const MARKUP = `
         <span class="s-toggle-track"></span>
       </label>
     </div>
+
+    <div class="s-row">
+      <div>
+        <div class="s-label" data-i18n="s_prefetch">Çalarken önbelleğe al</div>
+        <div class="s-sublabel" data-i18n="s_prefetch_sub">Çalan bölümün yerel bir kopyasını tutar; böylece ekran kilitlendiğinde ses kesilmez. Otomatik olarak silinir.</div>
+      </div>
+      <select class="s-select" id="s_prefetchYouTube">
+        <option value="always" data-i18n="s_prefetch_always">Her zaman</option>
+        <option value="wifi" selected data-i18n="s_prefetch_wifi">Yalnızca Wi-Fi</option>
+        <option value="never" data-i18n="s_prefetch_never">Asla</option>
+      </select>
+    </div>
   </section>
 
   <section class="s-section">
@@ -226,6 +245,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   const sSort = pick<HTMLSelectElement>('s_defaultSort');
   const sShowDl = pick<HTMLInputElement>('s_showDl');
   const sProxies = pick<HTMLInputElement>('s_allowPublicProxies');
+  const sPrefetch = pick<HTMLSelectElement>('s_prefetchYouTube');
   // Language: the shared flag listbox (native <option> can't render flags)
   pick<HTMLDivElement>('s_lang').append(createLangMenu());
   const swatchWrap = pick<HTMLDivElement>('colorSwatches');
@@ -277,6 +297,7 @@ export function initSettingsView(deps: SettingsViewDeps): View {
     sSort.value = S.defaultSort;
     sShowDl.checked = S.showDl;
     sProxies.checked = S.allowPublicProxies;
+    sPrefetch.value = S.prefetchYouTube;
     updateSwatchActive();
   }
 
@@ -319,6 +340,9 @@ export function initSettingsView(deps: SettingsViewDeps): View {
   sShowDl.addEventListener('change', () => setSetting('showDl', sShowDl.checked));
   sProxies.addEventListener('change', () =>
     setSetting('allowPublicProxies', sProxies.checked),
+  );
+  sPrefetch.addEventListener('change', () =>
+    setSetting('prefetchYouTube', sPrefetch.value as PrefetchMode),
   );
 
   // ── data section ─────────────────────────────────────────────────

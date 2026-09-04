@@ -50,7 +50,7 @@ app.use(
  * playback produces one or two per episode; using the worker as a general
  * media proxy needs one per file, which is what this bounds.
  */
-const AUDIO_STARTS_PER_MIN = 30;
+const AUDIO_STARTS_PER_MIN = 60;
 
 /**
  * Second, range-blind budget. The stream-start counter above is trivially
@@ -243,12 +243,41 @@ app.get('/v1/yt/search', async (c) => {
   );
 });
 
+/** KV's floor, and a ceiling well inside how long googlevideo signs a URL for. */
+const CACHE_TTL_MIN = 60;
+const CACHE_TTL_MAX = 6 * 3600;
+/** Stop serving a signed URL this long before it actually expires. */
+const EXPIRY_MARGIN_S = 300;
+
 /**
- * Resolve an audio format for the audio proxy; cached in KV (URLs ~6 h).
- * Failures are cached too ("none") so an unresolvable video fails fast instead
- * of re-probing every client on each request.
+ * How long a resolved format stays usable. googlevideo signs each URL with its
+ * own `expire` (a unix timestamp), so read that instead of guessing: the old
+ * fixed 1800 s threw away URLs with hours left on them — every discard costs a
+ * full Innertube round trip — while a longer fixed TTL would have handed out
+ * dead URLs. Falls back to the conservative floor when the param is missing.
  */
-async function audioFor(kv: KVNamespace, id: string): Promise<TubeAudio | null> {
+export function ttlForUrl(url: string): number {
+  const m = /[?&]expire=(\d+)/.exec(url);
+  if (!m) return 1800;
+  const left = Number(m[1]) - Math.floor(Date.now() / 1000) - EXPIRY_MARGIN_S;
+  return Math.max(CACHE_TTL_MIN, Math.min(left, CACHE_TTL_MAX));
+}
+
+/**
+ * Resolve an audio format for the audio proxy; cached in KV for as long as the
+ * signed URL is actually good for.
+ *
+ * `cacheFailure` exists for the mid-stream retry path. A failure is normally
+ * cached ("none") so an unresolvable video fails fast instead of re-probing
+ * every client on each request — but when the retry is recovering an episode
+ * that was PLAYING a second ago, a transient Innertube error must not blacklist
+ * it for the next 15 minutes.
+ */
+async function audioFor(
+  kv: KVNamespace,
+  id: string,
+  cacheFailure = true,
+): Promise<TubeAudio | null> {
   const key = 'yta2:' + id;
   const hit = await kv.get<TubeAudio | { none: true }>(key, 'json').catch(() => null);
   if (hit) return 'none' in hit ? null : hit;
@@ -256,9 +285,13 @@ async function audioFor(kv: KVNamespace, id: string): Promise<TubeAudio | null> 
     console.error('tubeAudio failed:', e.message);
     return null;
   });
-  await kv
-    .put(key, JSON.stringify(fresh ?? { none: true }), { expirationTtl: fresh ? 1800 : 900 })
-    .catch(() => {});
+  if (fresh) {
+    await kv
+      .put(key, JSON.stringify(fresh), { expirationTtl: ttlForUrl(fresh.url) })
+      .catch(() => {});
+  } else if (cacheFailure) {
+    await kv.put(key, JSON.stringify({ none: true }), { expirationTtl: 900 }).catch(() => {});
+  }
   return fresh;
 }
 
@@ -299,8 +332,8 @@ app.get('/v1/yt/resolve', async (c) => {
  * subrequest count per request at RESPONSE_CAP / AUDIO_CHUNK (+1 for a format
  * refresh) regardless of how long the episode is.
  */
-const AUDIO_CHUNK = 4 * 1024 * 1024;
-const RESPONSE_CAP = 16 * 1024 * 1024;
+const AUDIO_CHUNK = 8 * 1024 * 1024;
+const RESPONSE_CAP = 32 * 1024 * 1024;
 
 app.get('/v1/yt/audio', async (c) => {
   const id = c.req.query('id') ?? '';
@@ -327,12 +360,17 @@ app.get('/v1/yt/audio', async (c) => {
    * (`player/offline.ts` fetches with no Range), and capping it would silently
    * store a truncated episode. 206 is not a legal answer to a request that
    * carried no Range, so there is no way to signal a short read there either.
-   * Its ceiling is therefore the plain subrequest budget — about 190 MB at
-   * AUDIO_CHUNK 4 MB on the free plan, well past any real episode.
+   * Its ceiling is therefore the plain subrequest budget — about 380 MB at
+   * AUDIO_CHUNK 8 MB on the free plan, well past any real episode.
    */
   const endServed = clientRanged ? Math.min(endWanted, start + RESPONSE_CAP - 1) : endWanted;
 
-  const chunk = async (from: number, to: number, allowRetry: boolean): Promise<Response> => {
+  /**
+   * `retriesLeft` rather than a boolean: googlevideo 403s a live URL
+   * intermittently, and the first re-resolve can land on the same bad state.
+   * Two tries covers that without turning a genuinely dead video into a loop.
+   */
+  const chunk = async (from: number, to: number, retriesLeft: number): Promise<Response> => {
     // googlevideo's own `range` query param passes where the Range header is
     // rejected for non-zero offsets (PO-token era first-chunk-only behavior)
     const u = fmt!.url + `&range=${from}-${to}`;
@@ -340,17 +378,19 @@ app.get('/v1/yt/audio', async (c) => {
     // so it needs the same manual-redirect re-validation as any other upstream.
     // The timeout covers reaching the response, not draining its body.
     const res = await fetchWithTimeout(u, 20000, { headers: { 'user-agent': fmt!.ua } });
-    if ((res.status === 403 || res.status === 410) && allowRetry) {
+    if ((res.status === 403 || res.status === 410) && retriesLeft > 0) {
       await kv.delete('yta2:' + id).catch(() => {});
-      fmt = await audioFor(kv, id);
-      if (fmt) return chunk(from, to, false); // fresh URL, one retry
+      // cacheFailure: false — this video demonstrably plays, so a transient
+      // resolve failure here must not poison the next 15 minutes for it.
+      fmt = await audioFor(kv, id, false);
+      if (fmt) return chunk(from, to, retriesLeft - 1);
     }
     return res;
   };
 
   // Probe the first chunk before committing to a streamed response
   const firstTo = Math.min(start + AUDIO_CHUNK - 1, endServed);
-  const first = await chunk(start, firstTo, true);
+  const first = await chunk(start, firstTo, 2);
   if (!first.ok && first.status !== 206) {
     return c.json({ error: 'upstream ' + first.status }, 502);
   }
@@ -371,7 +411,7 @@ app.get('/v1/yt/audio', async (c) => {
           }
           from += AUDIO_CHUNK;
           if (from > endServed) break;
-          res = await chunk(from, Math.min(from + AUDIO_CHUNK - 1, endServed), true);
+          res = await chunk(from, Math.min(from + AUDIO_CHUNK - 1, endServed), 2);
           if (!res.ok && res.status !== 206) break;
         }
       } catch {

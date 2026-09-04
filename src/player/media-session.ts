@@ -1,5 +1,6 @@
 import { artAt } from '../lib/art';
 import { pbPause, pbPlay } from './engine';
+import { noteUserIntent } from './recovery';
 
 export interface MediaSessionActions {
   /** `offset` is the platform's own suggestion; fall back to the setting. */
@@ -30,8 +31,16 @@ export function initMediaSession(actions: MediaSessionActions): void {
     }
   };
 
-  on('play', () => pbPlay());
-  on('pause', () => pbPause());
+  // Lock-screen and headset buttons are real user intent, so they tell the
+  // recovery watchdog what the user wants; a pause the network imposed does not.
+  on('play', () => {
+    noteUserIntent(true);
+    pbPlay();
+  });
+  on('pause', () => {
+    noteUserIntent(false);
+    pbPause();
+  });
   on('stop', () => actions.stop());
   on('seekbackward', (d) => actions.seekBack(d.seekOffset));
   on('seekforward', (d) => actions.seekForward(d.seekOffset));

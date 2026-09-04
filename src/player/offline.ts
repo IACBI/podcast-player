@@ -40,11 +40,15 @@ export type OfflineOutcome = 'ok' | 'no-url' | 'cors-blocked' | 'failed' | 'no-s
 /** Keep this much headroom free rather than filling the origin's quota. */
 const QUOTA_HEADROOM_BYTES = 50 * 1024 * 1024;
 
+/** Ceiling for self-managed copies, evicted oldest-first. User downloads are exempt. */
+const EPHEMERAL_BUDGET_BYTES = 500 * 1024 * 1024;
+
 /** Fetch the episode audio into the offline cache. */
 export async function downloadOffline(
   ep: Episode,
   feedId: string,
   feedIsYT: boolean,
+  opts: { ephemeral?: boolean } = {},
 ): Promise<OfflineOutcome> {
   const src = await resolveAudioUrl(ep, feedIsYT);
   if (!src) return 'no-url';
@@ -77,11 +81,33 @@ export async function downloadOffline(
       title: ep.trackName || '',
       bytes,
       addedAt: Date.now(),
+      ephemeral: opts.ephemeral === true,
     });
+    if (opts.ephemeral) await evictEphemeral(String(ep.trackId));
     return 'ok';
   } catch (e) {
     // Typical failure: podcast CDN without CORS headers.
     return e instanceof TypeError ? 'cors-blocked' : 'failed';
+  }
+}
+
+/**
+ * Trim self-managed copies back under the budget, oldest first. `keepId` is
+ * whatever is playing right now — evicting that would undo the very reason the
+ * copy exists.
+ */
+async function evictEphemeral(keepId: string): Promise<void> {
+  try {
+    const own = (await listDownloads())
+      .filter((d) => d.ephemeral === true && d.id !== keepId)
+      .sort((a, b) => b.addedAt - a.addedAt);
+    let kept = 0;
+    for (const rec of own) {
+      kept += rec.bytes;
+      if (kept > EPHEMERAL_BUDGET_BYTES) await removeDownload(rec.id);
+    }
+  } catch {
+    /* eviction is best effort — a full cache fails the next download instead */
   }
 }
 
@@ -147,7 +173,10 @@ export async function storageInfo(): Promise<StorageInfo> {
   } catch {
     /* unsupported */
   }
-  const dls = await listDownloads();
+  // `usageBytes` is the honest total (prefetched copies included); the
+  // download counters describe what the USER saved, which is what the
+  // Downloads list shows.
+  const dls = (await listDownloads()).filter((d) => !d.ephemeral);
   return {
     usageBytes,
     quotaBytes,

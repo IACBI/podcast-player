@@ -14,7 +14,7 @@
  */
 import { createExecutionContext, env, fetchMock, waitOnExecutionContext } from 'cloudflare:test';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import worker from '../src/index';
+import worker, { ttlForUrl } from '../src/index';
 
 declare module 'cloudflare:test' {
   interface ProvidedEnv {
@@ -27,8 +27,8 @@ const GV_ORIGIN = 'https://rr1---sn-test.googlevideo.com';
 const GV_URL = GV_ORIGIN + '/videoplayback?expire=1';
 
 const MB = 1024 * 1024;
-const AUDIO_CHUNK = 4 * MB;
-const RESPONSE_CAP = 16 * MB;
+const AUDIO_CHUNK = 8 * MB;
+const RESPONSE_CAP = 32 * MB;
 
 /** Pre-seed the resolved format so the route never touches Innertube. */
 async function seedFormat(contentLength: number, id = VID): Promise<void> {
@@ -89,9 +89,9 @@ describe('/v1/yt/audio range handling', () => {
   });
 
   it('serves the tail when the client comes back for the remainder', async () => {
-    const size = 20 * MB;
+    const size = 40 * MB;
     await seedFormat(size);
-    // 20 MB - 16 MB = 4 MB left → exactly one chunk.
+    // 40 MB - 32 MB = 8 MB left → exactly one chunk.
     expectChunks(1);
 
     const res = await audio(`bytes=${RESPONSE_CAP}-`);
@@ -174,5 +174,55 @@ describe('/v1/yt/audio abuse budget', () => {
 
   it('leaves a different caller unaffected', async () => {
     expect((await audio('bytes=1-', 'yyyyyyyyyyy', '198.51.100.9')).status).toBe(502);
+  });
+});
+
+
+/**
+ * A video that is PLAYING must not be blacklisted by a transient upstream 403.
+ * The mid-stream retry re-resolves with negative caching switched off; caching
+ * the failure there left the episode dead for the next 15 minutes, mid-listen.
+ */
+describe('mid-stream 403 recovery', () => {
+  it('does not negative-cache a failed re-resolve for a playing video', async () => {
+    await seedFormat(10 * MB);
+    fetchMock.get(GV_ORIGIN).intercept({ path: /^\/videoplayback/ }).reply(403, '');
+
+    const res = await audio('bytes=0-');
+    expect(res.status).toBe(502); // Innertube is stubbed to fail, so no fresh URL
+
+    // The cached format was dropped, but nothing was written in its place.
+    expect(await env.KV.get('yta2:' + VID)).toBeNull();
+  });
+
+  it('still negative-caches a video that never resolved at all', async () => {
+    const id = 'yyyyyyyyyyy';
+    expect((await audio(undefined, id)).status).toBe(502);
+    expect(await env.KV.get('yta2:' + id)).toBe(JSON.stringify({ none: true }));
+  });
+});
+
+/**
+ * googlevideo signs each URL with its own expiry. Caching for a fixed 1800 s
+ * discarded URLs with hours left (a wasted Innertube round trip each time);
+ * caching longer than the signature would hand out dead ones.
+ */
+describe('ttlForUrl', () => {
+  const now = () => Math.floor(Date.now() / 1000);
+
+  it('follows the URL expiry, minus a safety margin', () => {
+    expect(ttlForUrl(`https://gv/x?expire=${now() + 3600}`)).toBeCloseTo(3600 - 300, -1);
+  });
+
+  it('never exceeds six hours, however long the signature claims', () => {
+    expect(ttlForUrl(`https://gv/x?expire=${now() + 86400}`)).toBe(6 * 3600);
+  });
+
+  it('clamps an already-expired URL to the KV floor rather than going negative', () => {
+    expect(ttlForUrl('https://gv/x?expire=1')).toBe(60);
+  });
+
+  it('falls back to the conservative default when there is no expiry', () => {
+    expect(ttlForUrl('https://gv/videoplayback?id=1')).toBe(1800);
   });
 });

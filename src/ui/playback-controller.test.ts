@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPlaybackController } from './playback-controller';
 import { audio } from '../player/engine';
 import { playing } from '../player/session';
+import { noteUserIntent } from '../player/recovery';
 import { clearQueue, queue } from '../state/queue';
 import { DEFAULT_SETTINGS, settings } from '../state/settings';
 
@@ -248,5 +249,39 @@ describe('resumeLastPlayed', () => {
 
     expect(audio.src).toBe(src);
     expect(playing()).toMatchObject({ feedId: FEED_B.id, trackId: 'b1' });
+  });
+});
+
+/**
+ * The transport must survive a dead source. Before the recovery watchdog, an
+ * `error` from the element — which is what a failed mid-episode range request
+ * looks like — left the player stopped with `audio_err` on screen and nothing
+ * retrying, and that is how backgrounded playback died.
+ */
+describe('recovery after the stream dies mid-episode', () => {
+  it('reloads the episode source instead of stopping', async () => {
+    await open(FEED_A.url, 3);
+    ctl.playEpisode(0, true); // autoplay: the user meant this to be playing
+    await waitFor(() => audio.src.includes('a1.mp3'), 'a1 to load');
+
+    // What a dropped continuation looks like from the element's side.
+    audio.src = 'https://127.0.0.1:1/dead.mp3';
+    audio.dispatchEvent(new Event('error'));
+
+    await waitFor(() => audio.src.includes('a1.mp3'), 'the source to be restored');
+    expect(audio.src).toContain('a1.mp3');
+  });
+
+  it('stays stopped when the user was the one who paused', async () => {
+    await open(FEED_A.url, 3);
+    ctl.playEpisode(0, true);
+    await waitFor(() => audio.src.includes('a1.mp3'), 'a1 to load');
+    noteUserIntent(false); // what the pause button and the lock screen report
+
+    audio.src = 'https://127.0.0.1:1/dead.mp3';
+    audio.dispatchEvent(new Event('error'));
+
+    await new Promise((r) => setTimeout(r, 200));
+    expect(audio.src).toContain('dead.mp3');
   });
 });
