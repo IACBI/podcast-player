@@ -2,7 +2,7 @@
   "id": "seseri",
   "name": "Seseri",
   "short_name": "Seseri",
-  "description": "Free, no-account podcast player. Search Apple Podcasts, paste any RSS feed or YouTube link — stream, resume, queue and download episodes for offline listening.",
+  "description": "Free, no-account podcast player. Search Apple Podcasts or paste any RSS feed URL — stream, resume, queue and download episodes for offline listening.",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
   "orientation": "any",
