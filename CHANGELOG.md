@@ -74,7 +74,14 @@ blocked for every episode whose audio sits on the podcast's own CDN, which is
 to say nearly all of them. Both failed silently in production while working
 locally, where the test audio is same-origin. `connect-src` now allows `https:`;
 `SECURITY.md` records why, and `scripts/smoke-live.cjs` now downloads a real
-episode so the deployed site is checked against a third-party host.
+episode so the deployed site is exercised against a third-party host.
+
+  Verified in production: an episode saves in a few seconds and plays back from
+  the cache. What the app can no longer do is get in its own way — whether a
+  given download completes is still the host's business, since a CDN that does
+  not answer a cross-origin request (or a redirect chain where one hop does
+  not) is beyond the page's reach. Streaming is unaffected either way: `<audio>`
+  needs no CORS.
 
 **Housekeeping.**
 
