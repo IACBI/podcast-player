@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <!-- CSP: script-src has no 'unsafe-inline' anymore — all handlers are wired
      via addEventListener in TS modules. style 'unsafe-inline' stays for
-     inline style attributes (dynamic tokens). -->
+     inline style attributes (dynamic tokens).
+     connect-src has to allow https: at large. Downloading an episode and
+     caching one while it plays both fetch the enclosure from whichever host
+     the feed names, and a podcast's audio can be anywhere; an allowlist would
+     have to contain the whole podcast internet. It is no wider than the
+     media-src and img-src above, which already accept any https origin, and
+     the app holds no account or token to exfiltrate. -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
   base-uri 'none';
@@ -15,7 +21,7 @@
   font-src https://fonts.gstatic.com;
   img-src 'self' data: https:;
   media-src https: blob: http://127.0.0.1:8787;
-  connect-src 'self' ws: http://127.0.0.1:8787 https://seseri-api.bozdogancanahmet.workers.dev https://itunes.apple.com https://ax.itunes.apple.com https://api.allorigins.win https://api.codetabs.com https://corsproxy.io;
+  connect-src 'self' https: ws: http://127.0.0.1:8787;
 ">
 <title>Seseri</title>
 <meta name="author" content="𝓐.𝓒.𝓑">

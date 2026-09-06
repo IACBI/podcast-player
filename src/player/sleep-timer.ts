@@ -12,7 +12,7 @@
  */
 
 import { local } from '../storage/local';
-import { pbGetVolume, pbPause, pbPaused, pbSetVolume } from './engine';
+import { pbPause, pbPaused, pbSetFade } from './engine';
 import { sleepState, SLEEP_EXTEND_MS, SLEEP_OFF, type SleepState } from '../state/sleep';
 
 /** Fade the last stretch instead of cutting the audio dead. */
@@ -27,8 +27,6 @@ interface Persisted {
 
 let ticker: ReturnType<typeof setInterval> | null = null;
 let lastTickAt = 0;
-/** Volume before the fade began, restored whenever the timer stops. */
-let preFadeVolume: number | null = null;
 /** Notifier for "the timer stopped playback", supplied once at boot. */
 let notifyDone: (() => void) | null = null;
 
@@ -43,10 +41,7 @@ function persist(): void {
 }
 
 function restoreVolume(): void {
-  if (preFadeVolume !== null) {
-    pbSetVolume(preFadeVolume);
-    preFadeVolume = null;
-  }
+  pbSetFade(1);
 }
 
 function stopTicker(): void {
@@ -86,10 +81,7 @@ function tick(): void {
   }
 
   const remainingMs = Math.max(0, s.remainingMs - elapsed);
-  if (remainingMs <= FADE_MS) {
-    preFadeVolume ??= pbGetVolume();
-    pbSetVolume(preFadeVolume * (remainingMs / FADE_MS));
-  }
+  if (remainingMs <= FADE_MS) pbSetFade(remainingMs / FADE_MS);
   if (remainingMs === 0) {
     pbPause();
     clearState();

@@ -91,7 +91,9 @@
   --header-h: 64px;
   --status-h: 30px;
   --sortbar-h: 44px;
-  --nav-w: 232px;      /* desktop sidebar width */
+  --nav-w-full: 232px; /* desktop sidebar, open */
+  --nav-w-rail: 76px;  /* desktop sidebar, collapsed to icons */
+  --nav-w: var(--nav-w-full); /* whichever the sidebar currently occupies */
   --tabbar-h: 60px;    /* mobile bottom tab bar */
   --mini-h: 64px;      /* mini-player dock */
 

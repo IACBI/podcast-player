@@ -109,17 +109,6 @@ export async function fetchTextProxied(
   }
 }
 
-/** One JSON GET with its own timeout + the load's abort signal. */
-export async function svcJson<T = unknown>(
-  url: string,
-  signal?: AbortSignal,
-  perTimeout = 8000,
-): Promise<T> {
-  const res = await fetchWithTimeout(url, signal, perTimeout);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return (await res.json()) as T;
-}
-
 /**
  * Fetch JSON from the iTunes API, working around its CDN CORS bug: responses
  * are cached without varying on Origin, so a cache-busting param forces a

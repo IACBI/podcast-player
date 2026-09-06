@@ -15,6 +15,9 @@ const NAV = `
   <div class="nav-brand">
     <span class="nav-brand-logo" aria-hidden="true">${BRAND_MARK}</span>
     <span class="nav-brand-name wm">Seseri</span>
+    <button class="nav-collapse" id="navCollapse" type="button" aria-controls="appNav" aria-expanded="true" aria-label="Menüyü daralt" title="Menüyü daralt">
+      <svg class="icon" aria-hidden="true"><use href="#ic-sidebar"/></svg>
+    </button>
   </div>
   <ul class="nav-items">
     <li><button class="nav-item" id="navHome" data-view="home" aria-current="page">
@@ -39,9 +42,6 @@ const NAV = `
       <span class="nav-dot" aria-hidden="true"></span>
     </button></li>
   </ul>
-  <button class="nav-collapse" id="navCollapse" type="button" aria-controls="appNav" aria-expanded="true" aria-label="Menüyü daralt" title="Menüyü daralt">
-    <svg class="icon icon-flip" aria-hidden="true"><use href="#ic-back"/></svg>
-  </button>
 </nav>`;
 
 const MAIN = `
@@ -76,6 +76,10 @@ const MINI_PLAYER = `
     <button class="icon-btn mini-tp mini-wide" id="miniNext" data-i18n-aria="btn_next" aria-label="Sonraki" disabled><svg class="icon" aria-hidden="true"><use href="#ic-next"/></svg></button>
   </div>
   <div class="mini-secondary">
+    <span class="vol mini-vol" id="miniVolume">
+      <button class="icon-btn mini-tp vol-btn" id="miniVolBtn" type="button" aria-label="Sesi kapat"><svg class="icon" aria-hidden="true"><use href="#ic-volume"/></svg></button>
+      <input class="range mini-vol-range" id="miniVolRange" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="volume_label" aria-label="Ses düzeyi">
+    </span>
     <span class="mini-sec-ctl mini-wide2">
       <svg class="icon" aria-hidden="true"><use href="#ic-moon"/></svg>
       <select class="seri-select mini-sel" id="miniSleep" data-i18n-aria="sleep_timer" aria-label="Uyku zamanlayıcısı (dk)"></select>

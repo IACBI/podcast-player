@@ -6,10 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * and must beat auto-next when set to stop at the end of the episode.
  */
 
+/**
+ * Mirrors the real engine: what you hear is the listener's own level times the
+ * fade factor, and the timer may only touch the second of those.
+ */
 const engine = vi.hoisted(() => ({
   paused: false,
-  volume: 1,
+  userVolume: 1,
+  fade: 1,
   pauseCalls: 0,
+  get volume(): number {
+    return this.userVolume * this.fade;
+  },
 }));
 
 vi.mock('./engine', () => ({
@@ -18,10 +26,13 @@ vi.mock('./engine', () => ({
     engine.pauseCalls++;
     engine.paused = true;
   },
-  pbGetVolume: () => engine.volume,
-  pbSetVolume: (v: number) => {
-    engine.volume = v;
+  pbSetFade: (f: number) => {
+    engine.fade = f;
   },
+  pbSetVolume: (v: number) => {
+    engine.userVolume = v;
+  },
+  pbGetVolume: () => engine.userVolume,
 }));
 
 const store = vi.hoisted(() => ({ map: new Map<string, unknown>() }));
@@ -49,7 +60,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
   engine.paused = false;
-  engine.volume = 1;
+  engine.userVolume = 1;
+  engine.fade = 1;
   engine.pauseCalls = 0;
   store.map.clear();
   cancelSleepTimer();
@@ -127,6 +139,18 @@ describe('sleep timer — fade out', () => {
     expect(engine.volume).toBeLessThan(1);
     extendSleepTimer();
     expect(engine.volume).toBe(1);
+  });
+
+  it('fades around the chosen level instead of overwriting it', () => {
+    engine.userVolume = 0.4;
+    setSleepMinutes(1);
+    advance(45_000); // 15s left → halfway through the 30s fade
+    expect(engine.volume).toBeLessThan(0.4);
+    expect(engine.userVolume).toBe(0.4);
+
+    cancelSleepTimer();
+    expect(engine.userVolume).toBe(0.4);
+    expect(engine.volume).toBe(0.4);
   });
 });
 

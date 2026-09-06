@@ -3,6 +3,7 @@
    Logical properties only — RTL comes for free. */
 
 .app-frame {
+  position: relative;
   display: flex;
   flex: 1;
   min-height: 0;
@@ -110,9 +111,16 @@
 
 /* Desktop: static left sidebar */
 @media (min-width: 900px) {
+  /* Positioned rather than a flex item at every desktop width, so collapsing,
+     expanding and peeking are all the same one mechanism: the rail's width and
+     the content's offset are driven by --nav-w and animate together. As a flex
+     item the two had to be switched between layouts mid-change, which made the
+     content jump to its new place while the rail was still sliding. */
   .app-nav {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
     inline-size: var(--nav-w);
-    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     padding: var(--s-5) var(--s-3);
@@ -120,7 +128,15 @@
     background: var(--bg2);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    transition: inline-size var(--d-base) var(--ease-out);
+    /* x clips the labels while the rail is narrow; y keeps the destinations
+       reachable if the window is ever shorter than the list. */
+    overflow-x: hidden;
+    overflow-y: auto;
+    transition: inline-size var(--d-base) var(--ease-out), box-shadow var(--d-base) var(--ease-out);
+  }
+  .app-main {
+    margin-inline-start: var(--nav-w);
+    transition: margin-inline-start var(--d-base) var(--ease-out);
   }
   .nav-brand {
     display: flex;
@@ -129,7 +145,9 @@
     padding: var(--s-2) var(--s-3) var(--s-5);
     color: var(--text);
   }
-  .nav-brand-logo { width: 28px; height: 28px; color: var(--accent); }
+  /* flex-shrink: the wordmark stays in the flow while the rail is narrow, and
+     would otherwise squeeze the mark off its centre before being clipped. */
+  .nav-brand-logo { width: 28px; height: 28px; color: var(--accent); flex-shrink: 0; }
   .nav-brand-name {
     font-family: var(--font-display);
     font-size: 19px;
@@ -156,35 +174,80 @@
   }
   .view-inner { padding: var(--s-6) var(--s-6); }
 
-  /* ─ Collapse toggle, pinned to the foot of the rail ─ */
+  /* ─ Collapse toggle ─
+     Top of the rail, next to the wordmark: the corner people already look at
+     for this, and the one spot that does not move when the rail narrows.
+     `[` does the same thing from the keyboard (ui/nav.ts). */
   .nav-collapse {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    margin-block-start: auto;
-    min-block-size: 40px;
-    padding-inline: var(--s-3);
+    justify-content: center;
+    inline-size: 32px;
+    block-size: 32px;
+    margin-inline-start: auto;
     border: 0;
     border-radius: var(--r-xs);
     background: none;
     color: var(--text3);
     cursor: pointer;
-    transition: background var(--d-fast) var(--ease-smooth), color var(--d-fast) var(--ease-smooth);
+    transition: background var(--d-fast) var(--ease-smooth), color var(--d-fast) var(--ease-smooth),
+      opacity var(--d-base) var(--ease-out);
   }
   .nav-collapse:hover { background: var(--surface); color: var(--text); }
   .nav-collapse .icon { width: 17px; height: 17px; }
 
-  /* ─ Collapsed: an icon rail ─
+  /* ─ Collapsed: an icon rail that peeks ─
      --nav-w is redefined on <body> rather than overridden rule by rule, so the
-     sidebar, the mini dock's inset and everything else measured from it move
-     together and stay in step mid-transition. */
-  body.nav-collapsed { --nav-w: 76px; }
-  body.nav-collapsed .app-nav { padding-inline: var(--s-2); }
-  body.nav-collapsed .nav-brand { justify-content: center; padding-inline: 0; }
-  body.nav-collapsed .nav-brand-name { display: none; }
-  body.nav-collapsed .nav-item { justify-content: center; padding-inline: 0; gap: 0; }
-  body.nav-collapsed .nav-label { display: none; }
-  body.nav-collapsed .nav-collapse { justify-content: center; padding-inline: 0; }
+     mini dock's inset and everything else measured from the sidebar follows it
+     in one step. Peeking widens only the rail, never --nav-w, so the panel
+     opens OVER the page and the content never moves.
+     `.nav-peek` is set by ui/nav.ts rather than being a `:hover` rule: the open
+     and close delays belong to the pointer, not to the collapse itself, which
+     must happen the instant it is asked for. `:has(:focus-visible)` and not
+     `:focus-within`, so clicking the toggle — which leaves it focused, under
+     the pointer — does not hold the panel open against you. */
+  body.nav-collapsed { --nav-w: var(--nav-w-rail); }
+  /* The rail itself is the expand control (ui/nav.ts) — no icon to aim at. */
+  body.nav-collapsed .app-nav { cursor: pointer; }
+
+  body.nav-collapsed .app-nav.nav-peek,
+  body.nav-collapsed .app-nav:has(:focus-visible) {
+    inline-size: var(--nav-w-full);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Icons keep their exact place whether the panel is peeking or not — only
+     the width and the labels change — so nothing slides under the pointer.
+     17px lines the icons up with the brand mark's own centre. */
+  body.nav-collapsed .nav-item { padding-inline: 17px var(--s-3); }
+  body.nav-collapsed .nav-label,
+  body.nav-collapsed .nav-brand-name {
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--d-fast) var(--ease-smooth);
+  }
+  body.nav-collapsed .app-nav.nav-peek .nav-label,
+  body.nav-collapsed .app-nav.nav-peek .nav-brand-name,
+  body.nav-collapsed .app-nav:has(:focus-visible) .nav-label,
+  body.nav-collapsed .app-nav:has(:focus-visible) .nav-brand-name { opacity: 1; }
+
+  /* The toggle becomes the whole brand row and stops being drawn: the mark
+     shows through it, so clicking the logo is what opens the rail. Keeping a
+     real button there is what keeps the action reachable by keyboard, where it
+     draws itself again on focus. */
+  body.nav-collapsed .nav-brand { position: relative; }
+  body.nav-collapsed .nav-collapse {
+    position: absolute;
+    inset: 0;
+    inline-size: auto;
+    block-size: auto;
+    margin: 0;
+    opacity: 0;
+    transition: opacity var(--d-fast) var(--ease-smooth);
+  }
+  body.nav-collapsed .nav-collapse:focus-visible { opacity: 1; background: var(--surface); }
+  body.nav-collapsed .nav-brand:has(:focus-visible) .nav-brand-logo { opacity: 0; }
+  body.nav-collapsed .nav-brand-logo { transition: opacity var(--d-fast) var(--ease-smooth); }
 }
 
 /* ───────────────────── mini-player dock frame ─────────────────── */

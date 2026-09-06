@@ -55,6 +55,15 @@ You can expect an initial response within a week.
   specification, and GitHub Pages cannot set response headers. The app is
   therefore framable by other origins. Putting the Worker (or any host that can
   set headers) in front of the site is the only fix.
+- `connect-src` allows `https:` at large. Downloading an episode, and caching
+  one while it plays, both fetch the enclosure from whichever host the feed
+  names — a podcast's audio can be anywhere, so an allow-list would have to
+  contain the whole podcast internet. Until 4.2.2 the directive was an
+  allow-list and both features were silently blocked in production for every
+  third-party host. It is no wider than `media-src` and `img-src`, which
+  already accept any https origin, and the app holds no account, cookie or
+  token that could be exfiltrated through it. `script-src` stays `'self'`, so
+  this does not widen what can execute.
 - Public CORS proxies, **when the user turns them on**, see the URL of every
   *public* feed opened, and the app races three of them and parses whichever
   answers first — so any one of them can alter the XML, enclosure URLs

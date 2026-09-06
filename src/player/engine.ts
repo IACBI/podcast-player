@@ -55,12 +55,54 @@ export function pbPause(): void {
   audio.pause();
 }
 
-/** Volume as 0–1. Used by the sleep timer's fade-out; there is no volume UI. */
+/**
+ * Volume is two independent things multiplied together: what the listener
+ * chose, and the sleep timer's fade-out. Keeping them apart means a fade can
+ * run without overwriting the chosen level, and moving the slider mid-fade
+ * does not cancel the fade or resurrect a stale "volume before the fade".
+ */
+let userVolume = 1;
+let fadeFactor = 1;
+
+function applyVolume(): void {
+  audio.volume = clamp01(userVolume) * clamp01(fadeFactor);
+}
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, Number.isFinite(v) ? v : 1));
+}
+
+/** The listener's own level, 0–1 — not whatever a fade has it at right now. */
 export function pbGetVolume(): number {
-  return audio.volume;
+  return userVolume;
 }
 export function pbSetVolume(v: number): void {
-  audio.volume = Math.max(0, Math.min(1, v));
+  userVolume = clamp01(v);
+  applyVolume();
+}
+
+/** Sleep-timer fade, 0–1. 1 is "no fade" and is the resting value. */
+export function pbSetFade(f: number): void {
+  fadeFactor = clamp01(f);
+  applyVolume();
+}
+export function pbSetMuted(on: boolean): void {
+  audio.muted = on;
+}
+
+/**
+ * iOS makes `volume` read-only — the hardware buttons are the only control
+ * there — so a slider would be a dead widget. Probed on a throwaway element
+ * rather than the live one, which may be mid-playback.
+ */
+let volumeSettable: boolean | undefined;
+export function pbVolumeSettable(): boolean {
+  if (volumeSettable === undefined) {
+    const probe = new Audio();
+    probe.volume = 0.5;
+    volumeSettable = probe.volume === 0.5;
+  }
+  return volumeSettable;
 }
 
 export function pbSeekTo(sec: number): void {
@@ -68,23 +110,6 @@ export function pbSeekTo(sec: number): void {
 }
 export function pbSetRate(r: number): void {
   audio.playbackRate = r;
-}
-
-/** End of the buffered range covering `at`, or `at` itself when nothing is buffered. */
-export function pbBufferedEnd(at: number = audio.currentTime): number {
-  const b = audio.buffered;
-  for (let i = 0; i < b.length; i++) {
-    if (at >= b.start(i) - 0.5 && at <= b.end(i) + 0.5) return b.end(i);
-  }
-  return at;
-}
-
-export function pbReadyState(): number {
-  return audio.readyState;
-}
-
-export function pbSrc(): string {
-  return audio.src;
 }
 
 // <audio> events → engine events (throttled timeupdate ~4 fps like legacy)

@@ -17,6 +17,7 @@ import { updateAmbient } from '../ambient';
 import { h } from '../h';
 import { initMarquee } from '../marquee';
 import { initSleepControl } from '../sleep-control';
+import { initVolumeControl } from '../volume-control';
 import {
   nowPlayingLabel,
   playing,
@@ -87,6 +88,11 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
           <button class="np-play" id="btnPlay" data-i18n-aria="play" aria-label="Oynat"><svg class="icon icon-fill" aria-hidden="true"><use href="#ic-play"/></svg></button>
           <button class="icon-btn np-tp" id="btnSkipFwd" data-i18n-aria="s_skip_fwd" aria-label="İleri Atla"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-forward"/><text class="skip-n" id="lblSkipFwd" x="12" y="12" text-anchor="middle" dominant-baseline="central">30</text></svg></button>
           <button class="icon-btn np-tp" id="btnNext" data-i18n-aria="btn_next" aria-label="Sonraki"><svg class="icon" aria-hidden="true"><use href="#ic-next"/></svg></button>
+        </div>
+
+        <div class="vol np-volume" id="npVolume">
+          <button class="icon-btn vol-btn np-vol-btn" id="npVolBtn" type="button" aria-label="Sesi kapat"><svg class="icon" aria-hidden="true"><use href="#ic-volume"/></svg></button>
+          <input class="range np-vol-range" id="npVolRange" type="range" min="0" max="100" step="1" value="100" data-i18n-aria="volume_label" aria-label="Ses düzeyi">
         </div>
 
         <div class="np-secondary">
@@ -160,6 +166,11 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     select: must<HTMLSelectElement>('sleepSel'),
     countdown: must('sleepLeft'),
     extend: must<HTMLButtonElement>('sleepPlus'),
+  });
+  initVolumeControl({
+    root: must('npVolume'),
+    button: must<HTMLButtonElement>('npVolBtn'),
+    slider: must<HTMLInputElement>('npVolRange'),
   });
 
   // ── play icon / title crossfade ──────────────────────────────────
@@ -264,10 +275,13 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   // lib/art.ts for how a real rendition is derived from it.
   const HERO_WIDTHS = [320, 640, 1024];
   /**
-   * Mirrors `.np-stage` in views/now-playing.css. Set from here rather than in
-   * the markup because <source> needs its own copy — `sizes` on the <img> does
-   * not apply to a <source>, and without it the default is 100vw, which makes
-   * the browser always pick the largest candidate.
+   * Mirrors `.np-stage` in views/now-playing.css, minus its `34dvh` cap, which
+   * `sizes` has no way to express — a short screen therefore fetches a
+   * rendition a step larger than it strictly needs, which is the harmless
+   * direction to be wrong in. Set from here rather than in the markup because
+   * <source> needs its own copy: `sizes` on the <img> does not apply to a
+   * <source>, and without it the default is 100vw, which makes the browser
+   * always pick the largest candidate.
    */
   const HERO_SIZES = '(min-width: 900px) 300px, 72vw';
   art.sizes = HERO_SIZES;

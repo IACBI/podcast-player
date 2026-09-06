@@ -5,12 +5,12 @@ import { initKeepAwake } from './player/keep-awake';
 import { initSleepTimer } from './player/sleep-timer';
 import { initShortcuts } from './ui/shortcuts';
 import { requestPersistence } from './player/offline';
-import { pbCurrent, pbDuration, pbSeekTo } from './player/engine';
+import { pbCurrent, pbDuration, pbSeekTo, pbSetMuted, pbSetVolume } from './player/engine';
 import { loadProgress, saveProgressNow, setQuotaListener } from './storage/progress';
 import { local } from './storage/local';
 import { loadSubscriptions } from './storage/subscriptions';
 import { loadQueue } from './state/queue';
-import { loadSettings, settings } from './state/settings';
+import { loadSettings, settings, type Settings } from './state/settings';
 import type { FeedRequest } from './feeds/types';
 import { bindI18nDom } from './ui/i18n-dom';
 import { initMiniPlayer } from './ui/mini-player';
@@ -44,6 +44,14 @@ export function boot(): void {
   applyLang(S.lang);
   document.documentElement.style.setProperty('--player-font-size', S.fontSize);
   document.documentElement.style.setProperty('--list-row-height', S.rowHeight);
+  // One place writes the element's level, so the two volume controls never
+  // have to agree with each other — both of them only write settings.
+  const applyVolume = (s: Settings): void => {
+    pbSetVolume(s.volume);
+    pbSetMuted(s.muted);
+  };
+  applyVolume(S);
+  settings.subscribe(applyVolume);
   setQuotaListener(() => toast(t('storage_full'), 'error'));
   requestPersistence(); // keep downloads/idb safe from storage-pressure eviction
   initOfflineBanner();

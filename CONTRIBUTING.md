@@ -1,37 +1,84 @@
 # Contributing
 
-Thanks for your interest! This is a deliberately simple project: one HTML file,
-no build step, no dependencies.
+Thanks for your interest. Seseri is a Vite + TypeScript single-page app with no
+UI framework: the DOM is built by hand, state lives in a ~50-line signal
+implementation, and an optional Cloudflare Worker proxies feeds.
 
 ## Getting started
 
 ```bash
 git clone https://github.com/IACBI/seseri.git
 cd seseri
-python -m http.server 8080   # or: npx serve .
+npm install
+npm run dev          # http://localhost:5199
 ```
 
-Open `http://localhost:8080` and start hacking on `index.html`.
+The Worker is optional for local work — without it the app talks to iTunes
+directly and, if you opt in, to public CORS proxies. To run it:
+
+```bash
+npm run worker:dev   # wrangler dev on 127.0.0.1:8787
+```
+
+Before opening a pull request:
+
+```bash
+npm run verify       # lint + typecheck + unit tests + build + worker checks
+```
 
 ## Guidelines
 
-- **Keep it dependency-free.** No frameworks, no npm packages, no build tools.
-- **Single file.** App logic, styles and markup live in `index.html`; only the
-  Service Worker (`sw.js`) and the manifest are separate.
-- **i18n.** Any user-visible string must be added to **all 8 languages** in the
-  `LANGS` object (TR, EN, DE, FR, ES, AR, JA, RU). Machine translation is fine;
-  mark uncertain ones in the PR description.
-- **Security.** All dynamic content inserted via `innerHTML` must go through
-  `esc()`. Keep the CSP `<meta>` tag in sync with any new external origin.
-- **PWA.** If you change cached assets, bump the `CACHE` version in `sw.js`.
+- **No frameworks.** `src/ui/h.ts` builds elements; `src/state/signals.ts` is
+  the whole reactivity layer. Reach for a dependency only when the alternative
+  is genuinely worse, and say why in the PR.
+- **Feed data never reaches the DOM as markup.** Anything from a feed, a search
+  result or a URL goes through `h()` or `textContent`. `innerHTML` is allowed
+  only for a static constant with nothing interpolated into it — ESLint fails
+  the build on interpolation, concatenation, `insertAdjacentHTML` and `eval`.
+  Show notes are reduced to text plus https-only links first
+  (`src/feeds/show-notes.ts`).
+- **i18n is compile-time checked.** A user-visible string means a key in
+  `src/i18n/types.ts` and a translation in **all eight** files under
+  `src/i18n/langs/`. Machine translation is fine — flag the uncertain ones in
+  the PR. `completeness.test.ts` fails on a missing key.
+- **Style through tokens.** Colours, spacing, radii and durations come from
+  `src/styles/tokens.css`; use logical properties (`inline-size`,
+  `margin-inline-start`) so RTL keeps working. One stylesheet per view.
+- **Respect the quiet defaults.** `prefers-reduced-motion` must leave a usable
+  static state, focus must stay visible, and touch targets stay at 44px.
+- **New external origin?** Update the CSP in `index.html`, and say what it is
+  for in `SECURITY.md` if it changes the app's exposure.
+- **New setting?** Add it to `Settings`, `DEFAULT_SETTINGS` and — unless it is
+  free-form — the `ALLOWED` map in `src/state/settings.ts`, which is what stops
+  a tampered `localStorage` value reaching the DOM or the audio element.
+- **Formatting.** The repository is not uniformly Prettier-formatted. Format
+  the files you touched; do not run `prettier --write` across the tree.
+
+## Testing
+
+`npm test` runs the unit suites (jsdom where a DOM is needed). Anything with
+real behaviour worth protecting gets a test — parsers, the sleep timer, the
+recovery watchdog, playback wiring.
+
+The headless smoke scripts need Microsoft Edge and drive the built app:
+
+```bash
+node scripts/smoke-p3-offline.cjs   # download → offline reload → playback
+node scripts/smoke-p5-mini.cjs      # mini dock, queue, back-navigation
+node scripts/smoke-live.cjs         # the deployed site, real CDNs
+```
+
+`docs/TESTPLAN.md` is the manual checklist for a release.
 
 ## Pull requests
 
-1. Fork, create a branch, make your change.
-2. Test locally in at least one Chromium browser and one of Firefox/Safari.
-3. Describe **what** and **why** in the PR; screenshots welcome for UI changes.
+1. Fork, branch, change.
+2. `npm run verify` green, plus whichever smoke script covers the area.
+3. Say **what** and **why**. Screenshots for UI changes; note anything you could
+   not verify yourself (an iOS device, a store submission) rather than implying
+   it was tested.
 
 ## Reporting bugs
 
-Open a GitHub issue with steps to reproduce, expected vs. actual behavior,
-and your browser/OS. For security issues see [SECURITY.md](SECURITY.md).
+Open an issue with steps to reproduce, expected vs. actual, and your
+browser/OS. For security issues see [SECURITY.md](SECURITY.md).

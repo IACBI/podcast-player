@@ -18,6 +18,7 @@ const ROWS: ReadonlyArray<readonly [string, LangKey]> = [
   ['↑', 'sc_prev'],
   ['↓', 'sc_next'],
   ['Home / End', 'sc_seek_edges'],
+  ['[', 'sc_sidebar'],
   ['Esc', 'sc_close'],
   ['?', 'sc_help'],
 ];

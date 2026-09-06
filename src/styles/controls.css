@@ -121,6 +121,88 @@
   cursor: pointer;
 }
 
+/* ─ Range slider ─
+   A native <input type="range"> for the pointer, touch and keyboard handling
+   it brings for free. Two things it cannot do portably are handled here: the
+   filled part of the track is painted from --range-pct (set by the owning
+   module), and the control is pinned to `direction: ltr` — engines disagree
+   about whether to mirror a range under RTL, and a fill that disagrees with
+   its own thumb is worse than a slider that does not mirror. */
+.range {
+  appearance: none;
+  -webkit-appearance: none;
+  direction: ltr;
+  inline-size: 100%;
+  /* the pointer target; the visible track is 4px inside it */
+  block-size: 22px;
+  background: none;
+  cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  block-size: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--range-pct, 0%),
+    var(--border2) var(--range-pct, 0%)
+  );
+}
+.range::-moz-range-track {
+  block-size: 4px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--range-pct, 0%),
+    var(--border2) var(--range-pct, 0%)
+  );
+}
+.range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  inline-size: 13px;
+  block-size: 13px;
+  margin-block-start: -4.5px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.55);
+  transition: transform var(--d-fast) var(--ease-spring);
+}
+.range::-moz-range-thumb {
+  inline-size: 13px;
+  block-size: 13px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px -1px rgba(0, 0, 0, 0.55);
+}
+.range:hover::-webkit-slider-thumb,
+.range:active::-webkit-slider-thumb { transform: scale(1.25); }
+.range:focus { outline: none; }
+.range:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 999px; }
+/* Silent: the track keeps its shape, the fill loses its voice. */
+.is-muted .range::-webkit-slider-runnable-track,
+.is-muted .range::-moz-range-track {
+  background: linear-gradient(
+    to right,
+    var(--text3) var(--range-pct, 0%),
+    var(--border2) var(--range-pct, 0%)
+  );
+}
+.is-muted .range::-webkit-slider-thumb { background: var(--text3); }
+.is-muted .range::-moz-range-thumb { background: var(--text3); }
+
+/* ─ Volume: speaker + slider, one unit (ui/volume-control.ts) ─ */
+.vol {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.vol[hidden] { display: none; }
+.vol-btn { color: var(--text2); }
+.vol-btn:hover { color: var(--text); }
+.vol.is-muted .vol-btn { color: var(--text3); }
+
 /* ─ Toggle switch (ported .s-toggle markup) ─ */
 .s-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
 .s-toggle input { position: absolute; opacity: 0; inline-size: 100%; block-size: 100%; cursor: pointer; }

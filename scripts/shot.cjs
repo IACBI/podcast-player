@@ -8,7 +8,7 @@ const puppeteer = require('puppeteer-core');
 const PORT = 5202;
 const ORIGIN = `http://localhost:${PORT}`;
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const OUT = process.argv[2] || path.join(__dirname, '..', 'docs', 'screens-p5');
+const OUT = process.argv[2] || path.join(__dirname, '..', 'docs', 'screens-v4');
 
 function makeWav(seconds = 120) {
   const rate = 8000;

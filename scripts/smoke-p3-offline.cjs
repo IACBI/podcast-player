@@ -104,13 +104,16 @@ function waitServer(url, tries = 60) {
     const stillDone = await page.$('.ep-dl-btn.done');
     ok('offline: download badge persists', !!stillDone);
 
-    // 4) Play the downloaded episode offline (row click loads+plays; the
-    //    Now Playing sheet stays closed but #tCur updates from the engine)
+    // 4) Play the downloaded episode offline. The sheet's own readout stays at
+    //    0:00 by design while it is closed (views/now-playing.ts skips the work
+    //    nobody can see), so the dock's slider is what reports the time here.
     await page.click('.ep-item');
     await page.waitForFunction(() => document.body.classList.contains('is-playing'), { timeout: 15000 });
     await new Promise((r) => setTimeout(r, 2500));
-    const t1 = await page.$eval('#tCur', (e) => e.textContent);
-    ok('offline: downloaded episode plays', t1 !== '0:00', `tCur=${t1}`);
+    const t1 = await page.$eval('#miniScrub', (e) =>
+      (e.getAttribute('aria-valuetext') || '').split(' / ')[0],
+    );
+    ok('offline: downloaded episode plays', !!t1 && t1 !== '0:00', `t=${t1}`);
 
     // 5) Seek works on the blob source — the seek keys live on the Now Playing
     //    scrubber, so open the sheet (click the active row) and focus it first

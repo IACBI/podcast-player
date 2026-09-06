@@ -84,10 +84,12 @@ body.has-ambient .np-inner::before { opacity: 1; }
 }
 
 /* ─ Artwork stage ─ */
+/* The hero is capped by height as well as width: on a short phone a square
+   sized off the viewport's width alone pushes the transport off the screen. */
 .np-stage {
   position: relative;
   align-self: center;
-  inline-size: min(72vw, 320px);
+  inline-size: min(72vw, 320px, 34dvh);
   aspect-ratio: 1;
   margin-block: var(--s-2);
 }
@@ -177,6 +179,19 @@ body.has-ambient .np-inner::before { opacity: 1; }
   box-shadow: 0 8px 26px -4px var(--accent), 0 0 0 9px var(--accent-soft);
 }
 
+/* ─ Volume row ─
+   Its own line under the transport rather than a fourth item in the secondary
+   cluster: a slider wants a run of width, and on a phone it is the only place
+   the level can be set at all (the dock has no room for it). */
+.np-volume {
+  gap: var(--s-3);
+  inline-size: min(100%, 320px);
+  align-self: center;
+  margin-block-start: calc(-1 * var(--s-3));
+}
+.np-volume .vol-btn { min-inline-size: 40px; }
+.np-volume .range { flex: 1; min-inline-size: 0; }
+
 /* ─ Secondary row: sleep, speed, queue ─ */
 .np-secondary {
   display: flex;
@@ -259,6 +274,20 @@ body.has-ambient .np-inner::before { opacity: 1; }
 }
 .np-queue.has-queue .np-queue-badge { opacity: 1; transform: none; }
 
+/* ─ Short viewports ─
+   A 4.7" phone, or a laptop whose browser chrome has eaten the window: the
+   sheet has to fit its own controls without scrolling, so the rhythm tightens
+   and the hero gives up the room. Declared before the desktop block below, so
+   a wide-and-short window keeps the two-column sizing. */
+@media (max-height: 740px) {
+  .np-player { gap: var(--s-3); }
+  .np-controls { gap: var(--s-3); }
+  .np-stage { inline-size: min(72vw, 320px, 30dvh); margin-block: 0; }
+  .np-play { inline-size: 60px; block-size: 60px; }
+  .np-play svg { inline-size: 25px; block-size: 25px; }
+  .np-volume { margin-block-start: 0; }
+}
+
 /* ─ Show notes (text + safe links only — see feeds/show-notes.ts) ─ */
 .np-notes {
   border-block-start: 1px solid var(--border);
@@ -330,4 +359,5 @@ body.has-ambient .np-inner::before { opacity: 1; }
   .np-title { text-align: start; }
   .np-transport { justify-content: flex-start; }
   .np-secondary { justify-content: flex-start; }
+  .np-volume { align-self: flex-start; }
 }

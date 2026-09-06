@@ -1,4 +1,4 @@
-# Dependencies / build output (none are committed — this app has no build step)
+# Dependencies / build output (Vite writes dist/; nothing built is committed)
 node_modules/
 dist/
 

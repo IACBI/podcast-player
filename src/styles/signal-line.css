@@ -21,6 +21,11 @@
   outline-offset: 5px;
   border-radius: var(--r-sm);
 }
+/* Pairs with the short-viewport block in views/now-playing.css: the hero
+   scrubber is the largest single thing that can shrink without losing use. */
+@media (max-height: 740px) {
+  .signal-scrub { block-size: 62px; }
+}
 
 /* Layers box holds the bars + baseline + playhead. In RTL the whole box is
    mirrored so the clip-path fill (physical, inset from the end) reads right. */
@@ -162,18 +167,22 @@
 .mini-main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* Inline transport cluster — centred between title (start) and the
-   secondary cluster (speed + sleep + expand, end) on wide screens */
+   secondary cluster (volume + sleep + speed + expand, end) on wide screens */
 .mini-controls,
 .mini-secondary {
   display: flex;
   align-items: center;
-  gap: 0;
   flex-shrink: 0;
 }
+/* The transport is a run of 38px buttons whose own padding is the spacing;
+   the secondary cluster is separate controls, which need to read as separate.
+   Spacing lives here rather than on the controls, so one rhythm governs it. */
+.mini-controls { gap: 0; }
+.mini-secondary { gap: var(--s-3); }
 .mini-sec-ctl {
   display: none;
   align-items: center;
-  gap: 2px;
+  gap: var(--s-1);
   color: var(--text3);
 }
 .mini-sec-ctl .icon { inline-size: 14px; block-size: 14px; }
@@ -198,7 +207,6 @@
 
 .mini-sel {
   min-block-size: 34px;
-  margin-inline: var(--s-1);
   padding-inline: var(--s-2);
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
@@ -212,6 +220,16 @@ select.mini-wide2 { display: none; }
 @media (min-width: 760px) {
   .mini-sec-ctl.mini-wide2 { display: inline-flex; }
   select.mini-wide2 { display: block; }
+}
+
+/* Volume in the dock is a wide-screen convenience — the Now Playing sheet
+   carries it on every size. It needs ~110px the narrower docks do not have. */
+.mini-vol { display: none; gap: var(--s-1); }
+.mini-vol .vol-btn { min-inline-size: 34px; }
+.mini-vol .vol-btn svg { inline-size: 17px; block-size: 17px; }
+.mini-vol-range { inline-size: 72px; }
+@media (min-width: 1024px) {
+  .mini-vol { display: flex; }
 }
 
 .mini-expand { color: var(--text3); }

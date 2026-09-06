@@ -66,10 +66,6 @@ export function noteUserIntent(playing: boolean): void {
   if (!playing) clearTimers();
 }
 
-export function wantsToPlay(): boolean {
-  return wantsPlayback;
-}
-
 async function attemptRecovery(): Promise<void> {
   if (!hooks || inFlight || !wantsPlayback) return;
   if (attempt >= BACKOFF_MS.length) {

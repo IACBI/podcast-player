@@ -153,6 +153,10 @@ export interface Lang {
   nav_settings: string;
   nav_collapse: string;
   nav_expand: string;
+  volume_label: string;
+  mute: string;
+  unmute: string;
+  sc_sidebar: string;
   home_tagline: string;
   home_continue: string;
   home_empty: string;

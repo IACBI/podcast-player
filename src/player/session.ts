@@ -31,17 +31,6 @@ export interface PlayingSession {
 /** null until the user starts an episode. */
 export const playing = signal<PlayingSession | null>(null);
 
-export function playingEpisode(): Episode | null {
-  const s = playing();
-  return s ? (s.episodes[s.index] ?? null) : null;
-}
-
-/** True when the given episode is the one loaded in the transport. */
-export function isPlayingTrack(feedId: string, trackId: string): boolean {
-  const s = playing();
-  return !!s && s.feedId === feedId && s.trackId === trackId;
-}
-
 export interface NowPlayingLabel {
   title: string;
   feedName: string;

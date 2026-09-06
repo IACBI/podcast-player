@@ -44,6 +44,13 @@ export interface Settings {
    * expects to find the way they left it.
    */
   navCollapsed: boolean;
+  /**
+   * Output level, 0–1. Separate from `muted` so unmuting returns to the level
+   * the listener actually chose rather than to full volume. iOS ignores both
+   * (see pbVolumeSettable) and the control hides itself there.
+   */
+  volume: number;
+  muted: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -63,6 +70,8 @@ export const DEFAULT_SETTINGS: Settings = {
   allowPublicProxies: false,
   prefetchAudio: 'wifi',
   navCollapsed: false,
+  volume: 1,
+  muted: false,
 };
 
 /**
@@ -88,6 +97,8 @@ const HEX = /^#[0-9a-f]{6}$/i;
 function acceptable<K extends keyof Settings>(key: K, value: unknown): boolean {
   if (typeof value !== typeof DEFAULT_SETTINGS[key]) return false;
   if (key === 'accentColor') return typeof value === 'string' && HEX.test(value);
+  // Written straight to audio.volume, which throws outside 0–1.
+  if (key === 'volume') return typeof value === 'number' && value >= 0 && value <= 1;
   const allowed = ALLOWED[key];
   return allowed ? allowed.has(value) : true;
 }

@@ -4,6 +4,96 @@
 > reaching 100 rolls into the minor instead — `4.1.99` → `4.2.0`. Releases are
 > not semver-major-bumped for feature work.
 
+## 4.2.2 — 2026-09-06
+
+### Volume, a sidebar worth using, and downloads that reach the CDN
+
+**Volume control.** The app could play at exactly one level — whatever the
+device was set to — which is a strange gap in a player. There is now a speaker
+and a slider in Now Playing on every device, and in the mini dock from 1024px
+up, where there is room for it. The two surfaces render from the same state
+(`ui/volume-control.ts`, the arrangement `sleep-control.ts` already used), so
+they cannot disagree. The level and the mute flag are remembered.
+
+- Muting keeps the level you chose, so unmuting returns to it rather than to
+  full volume. Dragging up from silence counts as unmuting. Pressing the
+  speaker while the slider sits at zero raises the level, so the button is
+  never something that visibly does nothing.
+- The engine now multiplies two separate things — the listener's level and the
+  sleep timer's fade — instead of the fade saving and restoring `audio.volume`
+  behind everyone's back. Moving the slider mid-fade no longer cancels the
+  fade, and a cancelled fade no longer restores a level nobody asked for.
+- **On iOS the control hides itself.** WebKit makes `audio.volume` read-only
+  there: the hardware buttons are the only volume control a web page can have.
+  A slider that did nothing would be worse than no slider, so it is not drawn.
+- Native `<input type="range">`, for the pointer, touch and keyboard handling
+  it brings — arrows, Home/End, Page Up/Down — and the screen-reader semantics.
+- The dock's end cluster gained a spacing rhythm it did not have: 4px between a
+  control and its own icon, 12px between one control and the next. The volume
+  slider had been sitting flush against the sleep timer's moon.
+
+**The sidebar collapses and reopens without hunting for a control.** The toggle
+sat at the foot of the rail, small and easy to miss. Open, it is now beside the
+wordmark at the top, drawn as a sidebar glyph rather than a chevron.
+
+Collapsed, it is not drawn at all, because the rail itself is the control:
+
+- **Pointing at the rail peeks it open** — full width, labels and all — and
+  moving away closes it again. The panel floats *over* the page rather than
+  pushing it, so a pointer crossing the edge never shifts what you were
+  reading. Opening waits 120ms and closing 320ms, so clipping the edge on the
+  way past does not make it flap. Those delays are timed in `ui/nav.ts` rather
+  than written as CSS `transition-delay`, because they belong to the pointer:
+  as a delay on the rail itself, they also applied to pressing the toggle, and
+  the collapse looked like it had hung. The rail is positioned rather than a
+  flex item in both states for the same reason — switching between the two
+  layouts mid-change made the content jump to its new place while the rail was
+  still sliding. And the peek is held by `:has(:focus-visible)`, not
+  `:focus-within`: clicking the toggle leaves it focused under the pointer, and
+  that used to hold the panel open against you.
+- **Clicking anywhere on the rail pins it open.** The destinations keep their
+  own job: clicking one navigates and leaves the rail collapsed.
+- The icons sit in exactly the same place peeking or not, so nothing slides out
+  from under the pointer; only the width and the labels change.
+- `[` toggles it from the keyboard (listed in the `?` cheatsheet), matched by
+  physical key too — on a Turkish Q layout that key types `ğ` and `[` needs
+  AltGr. Tabbing into the rail peeks it, and the invisible button covering the
+  brand mark draws itself again on focus, so the action stays reachable and
+  labelled without an icon sitting there at rest.
+
+**Now Playing fits shorter screens.** Adding a row cost vertical space, so the
+sheet now compacts under 740px tall: the artwork is capped against the viewport
+height as well as its width, the hero scrubber and the play button shrink, and
+the rhythm tightens. A 375×667 phone shows every control — and the episode
+notes — without scrolling, which it did not do before.
+
+**Downloading an episode works again.** The app's own CSP had `connect-src` as
+an allow-list of API hosts, so the `fetch` behind *Download* — and behind
+*cache while playing*, which 4.2.0 added to keep a locked screen playing — was
+blocked for every episode whose audio sits on the podcast's own CDN, which is
+to say nearly all of them. Both failed silently in production while working
+locally, where the test audio is same-origin. `connect-src` now allows `https:`;
+`SECURITY.md` records why, and `scripts/smoke-live.cjs` now downloads a real
+episode so the deployed site is checked against a third-party host.
+
+**Housekeeping.**
+
+- Dead code removed: `pbMuted`, `pbBufferedEnd`, `pbReadyState`, `pbSrc`,
+  `playingEpisode`, `isPlayingTrack`, `wantsToPlay`, `svcJson` and a test seam
+  with no test. Nothing referenced any of them.
+- `smoke-live.cjs` still asserted that Search shows a YouTube section, removed
+  in 4.2.0; `smoke-p3-offline.cjs` read the playback clock from the Now Playing
+  sheet, which by design does not update while the sheet is closed. Both were
+  reporting failures that were not there.
+- `CONTRIBUTING.md` still described the v1 app — one HTML file, no build step,
+  `esc()`, a `LANGS` object — and has been rewritten for what the project
+  actually is. `CLAUDE.md` (new) records the same ground for an agent, plus the
+  traps: HMR forking module instances, the sheet that is never `display:none`,
+  and not running Prettier across a tree that was never uniformly formatted.
+- Reference and store screenshots regenerated: the manifest's install
+  screenshots were showing a 4.1 UI. `scripts/shot.cjs` defaulted to an output
+  directory that does not exist.
+
 ## 4.2.1 — 2026-09-06
 
 ### Layout and legibility pass

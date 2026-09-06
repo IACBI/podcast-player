@@ -37,10 +37,11 @@ Playing** sheet for transport, sleep timer, speed and queue access.
 | **Play queue** | queue any episode as "up next" — the queue wins over list order; own page under **Queue** |
 | **Mini transport** | leaving a feed keeps playing; the persistent dock carries skip/play controls (plus prev/next & speed on wide screens) and a seekable progress line — the chevron expands the full **Now Playing** sheet. A title too long for the dock drifts end to end instead of ending in an ellipsis |
 | **Frequency-line scrubber** | signature waveform motif — drag-to-seek hero scrubber in Now Playing, animated line on the mini player while playing |
-| **Now Playing sheet** | full-screen at every size: play/pause, prev/next, skip, speed 0.5×–2.5×, sleep timer, resume position, episode notes |
+| **Now Playing sheet** | full-screen at every size: play/pause, prev/next, skip, speed 0.5×–2.5×, volume, sleep timer, resume position, episode notes |
 | **Sleep timer** | presets or any duration, or stop at the end of the episode; live countdown, **+5 min**, gentle fade-out, pauses with playback and survives a reload |
 | **Sharp artwork** | the right rendition is requested per surface, so covers are never upscaled from a thumbnail; the Now Playing background can pick up the cover's dominant colour (toggle in Settings → Appearance) |
-| **Desktop layout** | ≥900px swaps the tab bar for a persistent left sidebar (Home/Search/Library/Settings), collapsible to an icon rail; the language switcher sits in the window's own top corner |
+| **Volume** | a slider in Now Playing on every device, and in the dock from 1024px up; mute keeps the level you chose. Hidden on iOS, where the page is not allowed to set it and the hardware buttons are the control |
+| **Desktop layout** | ≥900px swaps the tab bar for a persistent left sidebar (Home/Search/Library/Settings). Collapse it to an icon rail from the toggle beside the wordmark or with `[`; pointing at the rail peeks it open over the page, clicking it pins it open. The language switcher sits in the window's own top corner |
 | **Subscriptions** | star podcasts; live in **Library**; OPML import/export + JSON backup |
 | **Themes** | Auto (system), Dark, Light, OLED Black; 7 accent colors (amber "dial glow" default) |
 | **Multilingual** | TR / EN / DE / FR / ES / AR / JA / RU (incl. RTL) |
@@ -49,7 +50,8 @@ Playing** sheet for transport, sleep timer, speed and queue access.
 
 #### Keyboard shortcuts
 
-Active while a podcast feed or the Now Playing sheet is open (not while typing in a field):
+Never while typing in a field. The transport keys follow whatever is playing,
+so they work from any view; `[`, `Esc` and `?` are always live.
 
 | Key | Action |
 |-----|--------|
@@ -57,6 +59,7 @@ Active while a podcast feed or the Now Playing sheet is open (not while typing i
 | `←` / `→` | Seek back / forward |
 | `↑` / `↓` | Previous / next episode |
 | `Home` / `End` | Jump to the start / end of the episode |
+| `[` | Collapse or expand the sidebar (desktop) |
 | `Esc` | Close the Now Playing sheet |
 | `?` | Show the shortcut list |
 
@@ -88,8 +91,10 @@ three of them and parses whichever answers first.
 | `node scripts/smoke-p3-offline.cjs` | headless-Edge smoke: download → offline reload → playback |
 | `node scripts/smoke-p4-worker.cjs` | smoke: real RSS through the local Worker (needs `worker:dev`) |
 | `node scripts/smoke-p5-mini.cjs` | smoke: mini player, queue, back-navigation |
+| `node scripts/smoke-live.cjs [url]` | smoke against the deployed site: search, feed, playback, download from the podcast's own CDN, CSP violations |
 | `node scripts/icons.cjs` | regenerate all PNG icons from `public/icons/seseri.svg` |
 | `node scripts/store-shots.cjs` | regenerate manifest/store screenshots |
+| `node scripts/shot.cjs [dir]` | regenerate the reference screenshots in `docs/screens-v4/` |
 
 ### Structure
 
@@ -111,8 +116,8 @@ three of them and parses whichever answers first.
 │   │   ├── nav.ts          # tab bar / sidebar controller
 │   │   ├── router.ts       # ?podcast= / ?rss= / ?view= ↔ history
 │   │   └── shell.ts, theme.ts, mini-player.ts, waveform.ts, art-tile.ts, ambient.ts,
-│   │       sleep-control.ts, marquee.ts, fit-select.ts, shortcuts.ts, number-prompt.ts,
-│   │       toast.ts, confirm.ts, …
+│   │       sleep-control.ts, volume-control.ts, marquee.ts, fit-select.ts,
+│   │       shortcuts.ts, number-prompt.ts, toast.ts, confirm.ts, …
 │   ├── i18n/              # 8 languages, compile-time key completeness
 │   ├── styles/
 │   │   ├── tokens.css, themes.css, base.css, layout.css, controls.css,
@@ -192,10 +197,11 @@ oynatma, uyku zamanlayıcısı, hız ve kuyruğa erişim için tam ekran **Şimd
 | **Kuyruk** | bölümü "sıradaki" olarak işaretle — kuyruk, liste sırasından önce gelir; kendi sayfası **Kuyruk** görünümünde |
 | **Mini transport** | feed'den çıkınca çalma sürer; kalıcı dock üzerinde atlama/oynat kontrolleri (geniş ekranda önceki/sonraki ve hız) ve dokunarak sarılabilir ilerleme çizgisi — ok simgesi tam **Şimdi Çalıyor** panelini açar. Dock'a sığmayan başlık üç nokta ile kesilmek yerine baştan sona kayar |
 | **Frekans-çizgisi dalga-form** | imza motif — Şimdi Çalıyor panelinde sürüklenebilir kahraman dalga-form, çalarken mini oynatıcıda animasyonlu çizgi |
-| **Şimdi Çalıyor paneli** | her ekran boyutunda tam ekran: oynat/duraklat, önceki/sonraki, atlama, 0.5×–2.5× hız, uyku zamanlayıcısı, kaldığın yerden devam etme, bölüm notları |
+| **Şimdi Çalıyor paneli** | her ekran boyutunda tam ekran: oynat/duraklat, önceki/sonraki, atlama, 0.5×–2.5× hız, ses düzeyi, uyku zamanlayıcısı, kaldığın yerden devam etme, bölüm notları |
 | **Uyku zamanlayıcısı** | hazır süreler veya istediğin süre, ya da bölüm sonunda dur; canlı geri sayım, **+5 dk**, yumuşak sesle kısılma, duraklatınca durur ve sayfa yenilenince kaybolmaz |
 | **Net kapak görselleri** | her yüzey için doğru çözünürlük istenir, kapaklar küçük bir görselden büyütülmez; Şimdi Çalıyor arka planı kapağın baskın rengini alabilir (Ayarlar → Görünüm'den kapatılabilir) |
-| **Masaüstü düzeni** | ≥900px'te sekme çubuğu yerini kalıcı soldan kenar çubuğuna bırakır (Ana Sayfa/Ara/Kütüphane/Ayarlar); kenar çubuğu simge şeridine daraltılabilir, dil seçici pencerenin kendi üst köşesinde durur |
+| **Ses düzeyi** | her cihazda Şimdi Çalıyor panelinde, 1024px'ten itibaren dock'ta da bir sürgü; sessize alma seçtiğin seviyeyi korur. iOS'ta gizlenir — orada sayfanın ses düzeyini ayarlamasına izin verilmez, kontrol donanım tuşlarındadır |
+| **Masaüstü düzeni** | ≥900px'te sekme çubuğu yerini kalıcı soldan kenar çubuğuna bırakır (Ana Sayfa/Ara/Kütüphane/Ayarlar). Kelime markasının yanındaki düğmeyle ya da `[` tuşuyla simge şeridine daraltılır; şeridin üzerine gelince sayfanın üstünde geçici olarak açılır, tıklayınca açık kalır. Dil seçici pencerenin kendi üst köşesinde durur |
 | **Abonelikler** | yıldızla; **Kütüphane**'de yaşar; OPML içe/dışa aktarma + JSON yedek |
 | **Temalar** | Otomatik (sistem), Koyu, Açık, OLED Siyah; 7 vurgu rengi (varsayılan kehribar "kadran ışıltısı") |
 | **Çok dilli** | TR / EN / DE / FR / ES / AR / JA / RU (RTL dahil) |
@@ -204,7 +210,8 @@ oynatma, uyku zamanlayıcısı, hız ve kuyruğa erişim için tam ekran **Şimd
 
 #### Klavye kısayolları
 
-Bir podcast feed'i ya da Şimdi Çalıyor paneli açıkken etkindir (bir alana yazarken değil):
+Bir alana yazarken hiçbiri çalışmaz. Transport tuşları o an çalan şeyi takip
+eder, yani her görünümde iş görür; `[`, `Esc` ve `?` her zaman etkindir.
 
 | Tuş | İşlev |
 |-----|--------|
@@ -212,6 +219,7 @@ Bir podcast feed'i ya da Şimdi Çalıyor paneli açıkken etkindir (bir alana y
 | `←` / `→` | Geri / ileri sar |
 | `↑` / `↓` | Önceki / sonraki bölüm |
 | `Home` / `End` | Bölümün başına / sonuna git |
+| `[` | Kenar çubuğunu daralt veya genişlet (masaüstü) |
 | `Esc` | Şimdi Çalıyor panelini kapat |
 | `?` | Kısayol listesini göster |
 

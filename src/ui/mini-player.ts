@@ -5,6 +5,7 @@ import { fmtTime } from '../lib/format';
 import { onEngine, pbDuration, pbSeekTo, pbSetRate } from '../player/engine';
 import { initMarquee } from './marquee';
 import { initSleepControl } from './sleep-control';
+import { initVolumeControl } from './volume-control';
 import { nowPlayingLabel, playing } from '../player/session';
 import { setSetting, settings } from '../state/settings';
 import type { PlaybackController } from './playback-controller';
@@ -55,6 +56,11 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
   }
   // The dock has no room for a countdown; the sheet shows that.
   initSleepControl({ select: sleepSel });
+  initVolumeControl({
+    root: must('miniVolume'),
+    button: must<HTMLButtonElement>('miniVolBtn'),
+    slider: must<HTMLInputElement>('miniVolRange'),
+  });
 
   function setIcon(playing: boolean): void {
     const u = btnPlay.querySelector('use');

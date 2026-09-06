@@ -35,7 +35,6 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
       hints: [...document.querySelectorAll('.search-hint')].map((h) => h.textContent.trim()),
     }));
     ok('search returns results', res.rows > 0, `${res.rows} rows · ${res.hints.join(' | ')}`);
-    ok('YouTube section present', res.hints.some((t) => t.includes('YouTube')));
 
     // Open the first podcast and play an episode (real audio CDN)
     await page.click('#resultsList .row');
@@ -47,6 +46,14 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
       .waitForFunction(() => document.body.classList.contains('is-playing'), { timeout: 45000 })
       .then(() => true).catch(() => false);
     ok('episode plays', playing);
+
+    // The enclosure is on the podcast's own CDN here, which is the case a local
+    // run never covers — same-origin audio would satisfy any connect-src.
+    await page.click('.ep-dl-btn');
+    const saved = await page
+      .waitForFunction(() => !!document.querySelector('.ep-dl-btn.done'), { timeout: 90000 })
+      .then(() => true).catch(() => false);
+    ok('episode downloads from its own CDN', saved);
 
     ok('no CSP violations', cspErrors.length === 0, cspErrors[0] ?? '');
     console.log('INFO  worker calls:', [...new Set(workerCalls)].join(' ') || 'none');

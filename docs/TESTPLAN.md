@@ -97,7 +97,7 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 
 - [ ] Bölüm çalarken "Geri" → ana ekran (veya önceki sekme); **çalma devam eder**, altta kalıcı mini dock görünür.
 - [ ] Mini dock'taki oynat/duraklat yerinde çalışır (gezinmez, panel açmaz).
-- [ ] Mini dock'a dokun/Enter → tam ekran (mobil) / yüzen panel (masaüstü) **Şimdi Çalıyor** paneli açılır — feed yeniden yüklenmez, çalan bölüm işaretli.
+- [ ] Mini dock'a dokun/Enter → **Şimdi Çalıyor** paneli tam ekran açılır (her boyutta) — feed yeniden yüklenmez, çalan bölüm işaretli.
 - [ ] Çalarken mini dock'taki frekans-çizgisi animasyonlu; duraklatınca veya `prefers-reduced-motion` altında sabit çizgiye döner.
 - [ ] Şimdi Çalıyor panelinde hero dalga-form üzerinde sürükle-bırak seek çalışır.
 - [ ] Panelin kapat düğmesi ve Esc ikisi de paneli kapatır, odak tetikleyici elemana döner.
@@ -107,11 +107,32 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 - [ ] Kuyruk satırları hangi podcast'ten geldiğini gösterir; başka bir feed'in bölümü
       sıradaysa bölüm bitince o feed yüklenip çalınır.
 
+### Ses düzeyi
+
+- [ ] Şimdi Çalıyor panelinde hoparlör düğmesi + sürgü her ekran boyutunda var; sürgüyü sürüklemek sesi anında değiştirir.
+- [ ] ≥1024px: mini dock'ta da hoparlör + sürgü görünür; iki yüzey birbirini anında yansıtır (birinde değiştir, diğerinde kontrol et).
+- [ ] Hoparlör düğmesi sessize alır ve geri açar; geri açınca **seçilmiş seviye** geri gelir, tam ses değil.
+- [ ] Sürgü sıfıra çekilince simge sessiz haline döner; hoparlöre basınca ses duyulur bir seviyeye çıkar (düğme boşa basılmış olmaz).
+- [ ] Sessizken sürgüyü sıfırdan yukarı çekmek sessizliği kaldırır.
+- [ ] Seviye sayfa yenilenince korunur; yeni bölüme geçince de korunur.
+- [ ] Uyku zamanlayıcısı son 30 sn'de kısarken sürgü **oynamaz**; zamanlayıcı iptal edilince ses seçilen seviyeye döner (tam sese değil).
+- [ ] Klavye: sürgüye Tab ile ulaşılır, ok tuşları / Home / End çalışır, odak halkası görünür.
+- [ ] iOS (Safari): kontrol hiç görünmez — orada `audio.volume` salt okunurdur, donanım tuşları kullanılır.
+
+
 ## 14. Masaüstü düzeni & tema
 
 - [ ] ≥900px: sekme çubuğu yerine solda **kalıcı kenar çubuğu** (Ana Sayfa/Ara/Kütüphane/Ayarlar); aktif sekme vurgulanır (`aria-current="page"`).
 - [ ] ≥900px: mini dock kenar çubuğunun sağında, tam genişlikte konumlanır (kenar çubuğunu örtmez).
-- [ ] ≥900px: kenar çubuğunun altındaki düğme çubuğu **simge şeridine daraltır**; etiketler gizlenir, simgeler tooltip kazanır, mini dock ve içerik alanı birlikte kayar; seçim sayfa yenilenince korunur (`aria-expanded` durumu yansıtır).
+- [ ] ≥900px: kelime markasının yanındaki düğme **simge şeridine daraltır**; etiketler gizlenir, simgeler tooltip kazanır, mini dock ve içerik alanı birlikte kayar; seçim sayfa yenilenince korunur (`aria-expanded` durumu yansıtır).
+- [ ] Daraltılmışken daraltma ikonu **hiç çizilmez**; şeritte yalnızca marka işareti ve simgeler durur.
+- [ ] Fare şeridin üzerine gelince şerit tam genişliğe açılır (etiketler görünür) ama **içerik yerinden oynamaz** — panel sayfanın üstünde durur. Fare uzaklaşınca kapanır. Kenardan hızlıca geçmek paneli titretmemeli (açılış ~120 ms, kapanış ~320 ms gecikmeli).
+- [ ] **Daraltma düğmesine basınca şerit anında kapanmaya başlar** — fare hâlâ şeridin üzerinde olsa bile beklemez, takılmaz, geri açılmaz. Şerit ve içerik birlikte kayar (biri diğerini beklemez). Fare şeritten çıkıp geri girene kadar peek açılmaz.
+- [ ] Açma da aynı şekilde akıcıdır: şerit genişlerken içerik onunla birlikte kayar.
+- [ ] Şeritte bir hedefe (Ana Sayfa/Ara/…) tıklamak yalnızca oraya gider, şerit daralmış kalır; şeridin **başka herhangi bir yerine** (marka işareti, boşluk) tıklamak şeridi açık hâle getirir.
+- [ ] Simgeler açılırken/kapanırken yer değiştirmez; sadece genişlik ve etiketler değişir.
+- [ ] Tab ile şeride girmek paneli açar; marka işaretinin üzerindeki görünmez düğme odaklanınca çizilir ve `aria-label` taşır.
+- [ ] `[` tuşu her görünümden şeridi açıp kapatır; **Türkçe-Q klavyede aynı fiziksel tuş** (`ğ`) de çalışır; bir metin alanına yazarken çalışmaz; <900px'te hiçbir şey yapmaz. Kısayol listesinde (`?`) görünür.
 - [ ] ≥900px: Ana Sayfa'daki dil seçici, 720px'lik okuma sütununun değil **pencerenin** sağ üst köşesindedir; ilk satırın altına girmez.
 - [ ] <900px: alttan sekme çubuğu + tek panelli ekran davranışı korunur; daraltma düğmesi görünmez.
 - [ ] Tema "Otomatik": işletim sistemi teması değişince uygulama canlı uyar (4 tema: Dark/Light/OLED Black + Otomatik).
@@ -130,6 +151,7 @@ Ekran görüntüsü altyapısı: `scripts/shot.cjs` (headless Edge + vite previe
 - [ ] Uzun başlıklar: dock'a sığmayan bölüm başlığı baştan sona kayar ve başa döner; sığan başlık **hiç** kıpırdamaz; `prefers-reduced-motion: reduce` altında kaymaz, üç noktaya döner. `ar` (RTL) dilinde kayma ters yöne gider.
 - [ ] Bölüm listesi: dar ekranda başlık iki satıra sarar (tek satırda kesilmez); ikinci satır da taşarsa üç nokta ile biter.
 - [ ] Uyku zamanlayıcısı seçicisi gösterdiği metnin genişliğinde durur: kapalıyken dar (hız seçicisiyle aynı ağırlıkta), "Bölüm sonunda" seçiliyken genişler; açılır liste seçenekleri tam okunur.
+- [ ] Şimdi Çalıyor paneli **320×568, 375×667 ve 390×844**'te kendi kontrollerini (transport + ses + uyku/hız/kuyruk) gösterebilmelidir; ≤740px yükseklikte kapak görseli ve boşluklar küçülür.
 - [ ] Atlama düğmelerindeki saniye rakamları dairesel okun tam ortasındadır (her iki yüzeyde ve ayarlardaki tüm değerlerde: 5/10/15/30/60 · 10/15/30/45/60/90).
 - [ ] Arama hatasında kırmızı hata kutusu + "Tekrar dene" düğmesi; boş sonuçta boş durum mesajı; yükleme sırasında "Aranıyor..." kutusu.
 

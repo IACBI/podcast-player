@@ -80,9 +80,3 @@ export function prefetchEpisode(ep: Episode, feedId: string): void {
     }
   })();
 }
-
-/** Test seam. */
-export function __resetPrefetchForTests(): void {
-  hooks = null;
-  attempted.clear();
-}
