@@ -148,6 +148,8 @@ const en: Lang = {
   nav_search: "Search",
   nav_library: "Library",
   nav_settings: "Settings",
+  nav_collapse: "Collapse menu",
+  nav_expand: "Expand menu",
   home_tagline: "Free, no-account podcast player",
   home_continue: "Continue listening",
   home_empty: "Nothing here yet.",

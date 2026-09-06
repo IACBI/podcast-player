@@ -196,20 +196,6 @@
 .mini-tp:disabled:hover { color: var(--text2); }
 .mini-tp svg { inline-size: 19px; block-size: 19px; }
 
-/* skip buttons: seconds badge centred inside the circular-arrow glyph */
-.mini-skip { position: relative; }
-.mini-skip-n {
-  position: absolute;
-  inset-block-start: 53%;
-  inset-inline-start: 50%;
-  transform: translate(-50%, -50%);
-  font-family: var(--font-mono);
-  font-size: 7.5px;
-  font-weight: 700;
-  color: currentColor;
-  pointer-events: none;
-}
-
 .mini-sel {
   min-block-size: 34px;
   margin-inline: var(--s-1);

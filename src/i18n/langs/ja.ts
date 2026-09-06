@@ -148,6 +148,8 @@ const ja: Lang = {
   nav_search: "検索",
   nav_library: "ライブラリ",
   nav_settings: "設定",
+  nav_collapse: "メニューを折りたたむ",
+  nav_expand: "メニューを展開",
   home_tagline: "無料・アカウント不要のポッドキャストプレーヤー",
   home_continue: "続きを聴く",
   home_empty: "まだ何もありません。",

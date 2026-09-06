@@ -1,5 +1,5 @@
 /**
- * Now Playing sheet — full-screen on mobile, floating panel on desktop.
+ * Now Playing sheet — full-screen at every size.
  * Hero: the signature frequency-line scrubber (waveform.ts). Transport,
  * skip, speed, sleep timer and queue access live here.
  * Sheet chrome (open/close animation) lives in overlays.css; the inner
@@ -15,6 +15,7 @@ import { onEngine, pbCurrent, pbDuration, pbSetRate } from '../../player/engine'
 import { hasShowNotes, parseShowNotes } from '../../feeds/show-notes';
 import { updateAmbient } from '../ambient';
 import { h } from '../h';
+import { initMarquee } from '../marquee';
 import { initSleepControl } from '../sleep-control';
 import {
   nowPlayingLabel,
@@ -82,9 +83,9 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
 
         <div class="np-transport">
           <button class="icon-btn np-tp" id="btnPrev" data-i18n-aria="btn_prev" aria-label="Önceki"><svg class="icon" aria-hidden="true"><use href="#ic-prev"/></svg></button>
-          <button class="icon-btn np-tp np-skip" id="btnSkipBack" data-i18n-aria="s_skip_back" aria-label="Geri Atla"><svg class="icon" aria-hidden="true"><use href="#ic-rewind"/></svg><span class="np-skip-n" id="lblSkipBack">15</span></button>
+          <button class="icon-btn np-tp" id="btnSkipBack" data-i18n-aria="s_skip_back" aria-label="Geri Atla"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-rewind"/><text class="skip-n" id="lblSkipBack" x="12" y="12" text-anchor="middle" dominant-baseline="central">15</text></svg></button>
           <button class="np-play" id="btnPlay" data-i18n-aria="play" aria-label="Oynat"><svg class="icon icon-fill" aria-hidden="true"><use href="#ic-play"/></svg></button>
-          <button class="icon-btn np-tp np-skip" id="btnSkipFwd" data-i18n-aria="s_skip_fwd" aria-label="İleri Atla"><svg class="icon" aria-hidden="true"><use href="#ic-forward"/></svg><span class="np-skip-n" id="lblSkipFwd">30</span></button>
+          <button class="icon-btn np-tp" id="btnSkipFwd" data-i18n-aria="s_skip_fwd" aria-label="İleri Atla"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-forward"/><text class="skip-n" id="lblSkipFwd" x="12" y="12" text-anchor="middle" dominant-baseline="central">30</text></svg></button>
           <button class="icon-btn np-tp" id="btnNext" data-i18n-aria="btn_next" aria-label="Sonraki"><svg class="icon" aria-hidden="true"><use href="#ic-next"/></svg></button>
         </div>
 
@@ -114,7 +115,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
   const player = must('npPlayer');
   const art = must<HTMLImageElement>('npArt');
   const artWebp = must<HTMLSourceElement>('npArtWebp');
-  const feedEl = must('npFeed');
+  const feedLine = initMarquee(must('npFeed'));
   const titleEl = must('nowTitle');
   const elTCur = must('tCur');
   const elTTot = must('tTot');
@@ -176,6 +177,8 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
     if (titleTimer) clearTimeout(titleTimer);
     titleTimer = setTimeout(() => {
       titleEl.textContent = text;
+      // Three lines cover almost everything; the rest stays on hover.
+      titleEl.title = text;
       titleEl.classList.remove('swapping');
     }, 150);
   }
@@ -282,7 +285,7 @@ export function initNowPlaying(deps: NowPlayingDeps): NowPlayingSheet {
 
   function applyArt(now: NowPlayingLabel | null): void {
     const src = now ? httpsOnly(now.art) : '';
-    feedEl.textContent = now?.feedName ?? '';
+    feedLine.set(now?.feedName ?? '');
     if (src) {
       // WebP is ~4× lighter at this size. <picture> picks it by MIME support
       // alone and does *not* fall back if the chosen resource 404s, hence the

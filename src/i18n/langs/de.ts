@@ -148,6 +148,8 @@ const de: Lang = {
   nav_search: "Suche",
   nav_library: "Bibliothek",
   nav_settings: "Einstellungen",
+  nav_collapse: "Menü einklappen",
+  nav_expand: "Menü ausklappen",
   home_tagline: "Kostenloser Podcast-Player ohne Konto",
   home_continue: "Weiterhören",
   home_empty: "Noch nichts gehört.",

@@ -184,7 +184,11 @@ export function initPodcastView(deps: PodcastViewDeps): PodcastView {
       h(
         'div',
         { className: 'ep-info' },
-        h('div', { className: 'ep-name' }, ep.trackName || t('ep_fallback', i + 1)),
+        h(
+          'div',
+          { className: 'ep-name', title: ep.trackName || t('ep_fallback', i + 1) },
+          ep.trackName || t('ep_fallback', i + 1),
+        ),
         dateDur,
       ),
     );

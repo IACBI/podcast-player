@@ -4,6 +4,42 @@
 > reaching 100 rolls into the minor instead — `4.1.99` → `4.2.0`. Releases are
 > not semver-major-bumped for feature work.
 
+## 4.2.1 — 2026-09-06
+
+### Layout and legibility pass
+
+Six things reported from a phone and a laptop, fixed where each of them
+actually lived.
+
+- **Long titles are readable again.** An episode title too wide for the mini
+  dock drifts slowly to its end, rests, and drifts back, instead of stopping at
+  an ellipsis — the part that distinguishes "15. Bölüm" from "16. Bölüm" was
+  exactly the part being cut. It moves only when the text really overflows, and
+  under `prefers-reduced-motion` it stays put with the ellipsis it always had.
+  In episode lists — where 142 drifting rows would be chaos — the title wraps to
+  two lines instead. The Now Playing headline now takes three.
+- **The language switcher sits in the window's corner on a laptop.** It used to
+  ride the right edge of the 720px reading column, which on a wide screen is
+  nowhere near the corner it appeared to be aiming for.
+- **The sleep timer is the size of what it says.** A native select is as wide as
+  its widest option, so the control sat as a 100–120px box reading "—", twice
+  the width of the speed control beside it. It is now measured against the
+  option actually showing: narrow when off, wider only while "End of episode" is
+  chosen. On a phone that also frees the sleep, speed and queue controls to
+  share one row while the timer is idle.
+- **The seconds on the skip buttons are centred.** They were an overlaid `<span>`
+  nudged by a percentage; they are now `<text>` inside the icon's own
+  coordinate system, where the circular arrow is centred on (12, 12) — exact at
+  any icon size and in any font.
+- **Now Playing opens full-screen on a laptop too.** It used to become a panel
+  pinned to one corner, which made the player read as a widget rather than the
+  place you had just navigated to. Past 1240px the content stays in a centred
+  column so a wide window does not stretch it.
+- **The desktop sidebar collapses to an icon rail.** A button at the foot of the
+  rail folds it to 76px, keeping every destination reachable as an icon with its
+  name on hover; the mini dock and the content area move with it, and the choice
+  is remembered.
+
 ## 4.2.0 — 2026-09-04
 
 ### YouTube support removed

@@ -3,6 +3,7 @@ import { artAt, artSrcset } from '../lib/art';
 import { dprWidths, MINI_ART_PX } from './art-tile';
 import { fmtTime } from '../lib/format';
 import { onEngine, pbDuration, pbSeekTo, pbSetRate } from '../player/engine';
+import { initMarquee } from './marquee';
 import { initSleepControl } from './sleep-control';
 import { nowPlayingLabel, playing } from '../player/session';
 import { setSetting, settings } from '../state/settings';
@@ -26,7 +27,7 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
   const { playback } = deps;
   const main = must('miniMain');
   const art = must<HTMLImageElement>('miniArt');
-  const title = must('miniTitle');
+  const title = initMarquee(must('miniTitle'));
   const feed = must('miniFeed');
   const btnPlay = must<HTMLButtonElement>('miniPlay');
   const btnPrev = must<HTMLButtonElement>('miniPrev');
@@ -69,8 +70,9 @@ export function initMiniPlayer(deps: { playback: PlaybackController; onOpen: () 
     btnPrev.disabled = !s || s.index <= 0;
     btnNext.disabled = !s || s.index >= s.episodes.length - 1;
     if (!now) return;
-    title.textContent = now.title;
+    title.set(now.title);
     feed.textContent = now.feedName;
+    feed.title = now.feedName;
     const src = artAt(now.art, MINI_ART_PX);
     if (src) {
       art.src = src;

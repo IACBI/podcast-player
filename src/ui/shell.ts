@@ -19,26 +19,29 @@ const NAV = `
   <ul class="nav-items">
     <li><button class="nav-item" id="navHome" data-view="home" aria-current="page">
       <svg class="icon" aria-hidden="true"><use href="#ic-home"/></svg>
-      <span data-i18n="nav_home">Ana Sayfa</span>
+      <span class="nav-label" data-i18n="nav_home">Ana Sayfa</span>
       <span class="nav-dot" aria-hidden="true"></span>
     </button></li>
     <li><button class="nav-item" id="navSearch" data-view="search">
       <svg class="icon" aria-hidden="true"><use href="#ic-search"/></svg>
-      <span data-i18n="nav_search">Ara</span>
+      <span class="nav-label" data-i18n="nav_search">Ara</span>
       <span class="nav-dot" aria-hidden="true"></span>
     </button></li>
     <li><button class="nav-item" id="navLibrary" data-view="library">
       <svg class="icon" aria-hidden="true"><use href="#ic-library"/></svg>
-      <span data-i18n="nav_library">Kütüphane</span>
+      <span class="nav-label" data-i18n="nav_library">Kütüphane</span>
       <span class="nav-dot" aria-hidden="true"></span>
     </button></li>
     <li class="nav-spring" aria-hidden="true"></li>
     <li><button class="nav-item" id="navSettings" data-view="settings">
       <svg class="icon" aria-hidden="true"><use href="#ic-settings"/></svg>
-      <span data-i18n="nav_settings">Ayarlar</span>
+      <span class="nav-label" data-i18n="nav_settings">Ayarlar</span>
       <span class="nav-dot" aria-hidden="true"></span>
     </button></li>
   </ul>
+  <button class="nav-collapse" id="navCollapse" type="button" aria-controls="appNav" aria-expanded="true" aria-label="Menüyü daralt" title="Menüyü daralt">
+    <svg class="icon icon-flip" aria-hidden="true"><use href="#ic-back"/></svg>
+  </button>
 </nav>`;
 
 const MAIN = `
@@ -67,9 +70,9 @@ const MINI_PLAYER = `
   </div>
   <div class="mini-controls">
     <button class="icon-btn mini-tp mini-wide" id="miniPrev" data-i18n-aria="btn_prev" aria-label="Önceki" disabled><svg class="icon" aria-hidden="true"><use href="#ic-prev"/></svg></button>
-    <button class="icon-btn mini-tp mini-skip" id="miniBack" data-i18n-aria="s_skip_back" aria-label="Geri Atla"><svg class="icon" aria-hidden="true"><use href="#ic-rewind"/></svg><span class="mini-skip-n" id="miniLblBack">15</span></button>
+    <button class="icon-btn mini-tp" id="miniBack" data-i18n-aria="s_skip_back" aria-label="Geri Atla"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-rewind"/><text class="skip-n" id="miniLblBack" x="12" y="12" text-anchor="middle" dominant-baseline="central">15</text></svg></button>
     <button class="mini-play" id="miniPlay" data-i18n-aria="play" aria-label="Oynat"><svg class="icon icon-fill" aria-hidden="true"><use href="#ic-play"/></svg></button>
-    <button class="icon-btn mini-tp mini-skip" id="miniFwd" data-i18n-aria="s_skip_fwd" aria-label="İleri Atla"><svg class="icon" aria-hidden="true"><use href="#ic-forward"/></svg><span class="mini-skip-n" id="miniLblFwd">30</span></button>
+    <button class="icon-btn mini-tp" id="miniFwd" data-i18n-aria="s_skip_fwd" aria-label="İleri Atla"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#ic-forward"/><text class="skip-n" id="miniLblFwd" x="12" y="12" text-anchor="middle" dominant-baseline="central">30</text></svg></button>
     <button class="icon-btn mini-tp mini-wide" id="miniNext" data-i18n-aria="btn_next" aria-label="Sonraki" disabled><svg class="icon" aria-hidden="true"><use href="#ic-next"/></svg></button>
   </div>
   <div class="mini-secondary">

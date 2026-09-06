@@ -109,7 +109,11 @@
 }
 .offline-banner[hidden] { display: none; }
 
-/* ─ Now Playing sheet chrome (contents in views/now-playing.css) ─ */
+/* ─ Now Playing sheet chrome (contents in views/now-playing.css) ─
+   Full-screen at every size. On a laptop it used to open as a panel pinned to
+   one corner, which made the player read as a widget rather than the place you
+   had just navigated to; views/now-playing.css keeps the content in a centred
+   column so a wide window does not stretch it across the whole screen. */
 .np-sheet {
   position: fixed;
   inset: 0;
@@ -132,18 +136,3 @@
   transition: transform var(--d-slow) var(--ease-out), visibility 0s;
 }
 
-@media (min-width: 900px) {
-  .np-sheet {
-    inset: auto var(--s-4) var(--s-4) auto;
-    inset-inline-start: calc(var(--nav-w) + var(--s-4));
-    max-inline-size: 980px;
-    margin-inline-start: auto;
-    block-size: min(640px, calc(100dvh - 48px));
-    border: 1px solid var(--border);
-    border-radius: var(--r-xl);
-    box-shadow: var(--shadow-lg);
-    transform: translateY(24px);
-    opacity: 0;
-  }
-  .np-sheet.open { transform: none; opacity: 1; }
-}

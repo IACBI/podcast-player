@@ -163,6 +163,8 @@ const ru: Lang = {
   nav_search: "Поиск",
   nav_library: "Библиотека",
   nav_settings: "Настройки",
+  nav_collapse: "Свернуть меню",
+  nav_expand: "Развернуть меню",
   home_tagline: "Бесплатный подкаст-плеер без аккаунта",
   home_continue: "Слушать дальше",
   home_empty: "Здесь пока пусто.",

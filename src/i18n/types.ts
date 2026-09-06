@@ -151,6 +151,8 @@ export interface Lang {
   nav_search: string;
   nav_library: string;
   nav_settings: string;
+  nav_collapse: string;
+  nav_expand: string;
   home_tagline: string;
   home_continue: string;
   home_empty: string;

@@ -60,6 +60,7 @@
   -webkit-backdrop-filter: blur(18px);
 }
 .nav-brand { display: none; }
+.nav-collapse { display: none; }
 .nav-items { display: flex; list-style: none; }
 .nav-item {
   display: flex;
@@ -119,6 +120,7 @@
     background: var(--bg2);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    transition: inline-size var(--d-base) var(--ease-out);
   }
   .nav-brand {
     display: flex;
@@ -153,6 +155,36 @@
     padding-block-end: calc(var(--mini-h) + env(safe-area-inset-bottom, 0px) + var(--s-4));
   }
   .view-inner { padding: var(--s-6) var(--s-6); }
+
+  /* ─ Collapse toggle, pinned to the foot of the rail ─ */
+  .nav-collapse {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    margin-block-start: auto;
+    min-block-size: 40px;
+    padding-inline: var(--s-3);
+    border: 0;
+    border-radius: var(--r-xs);
+    background: none;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background var(--d-fast) var(--ease-smooth), color var(--d-fast) var(--ease-smooth);
+  }
+  .nav-collapse:hover { background: var(--surface); color: var(--text); }
+  .nav-collapse .icon { width: 17px; height: 17px; }
+
+  /* ─ Collapsed: an icon rail ─
+     --nav-w is redefined on <body> rather than overridden rule by rule, so the
+     sidebar, the mini dock's inset and everything else measured from it move
+     together and stay in step mid-transition. */
+  body.nav-collapsed { --nav-w: 76px; }
+  body.nav-collapsed .app-nav { padding-inline: var(--s-2); }
+  body.nav-collapsed .nav-brand { justify-content: center; padding-inline: 0; }
+  body.nav-collapsed .nav-brand-name { display: none; }
+  body.nav-collapsed .nav-item { justify-content: center; padding-inline: 0; gap: 0; }
+  body.nav-collapsed .nav-label { display: none; }
+  body.nav-collapsed .nav-collapse { justify-content: center; padding-inline: 0; }
 }
 
 /* ───────────────────── mini-player dock frame ─────────────────── */
@@ -173,5 +205,6 @@ body.has-track .mini-player { display: flex; }
     inset-inline-start: calc(var(--nav-w) + var(--s-3));
     inset-inline-end: var(--s-3);
     inset-block-end: var(--s-3);
+    transition: inset-inline-start var(--d-base) var(--ease-out);
   }
 }

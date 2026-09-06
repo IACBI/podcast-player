@@ -148,6 +148,8 @@ const ar: Lang = {
   nav_search: "بحث",
   nav_library: "المكتبة",
   nav_settings: "الإعدادات",
+  nav_collapse: "طيّ القائمة",
+  nav_expand: "توسيع القائمة",
   home_tagline: "مشغّل بودكاست مجاني بدون حساب",
   home_continue: "متابعة الاستماع",
   home_empty: "لا شيء هنا بعد.",

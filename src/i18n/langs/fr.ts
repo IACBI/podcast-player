@@ -148,6 +148,8 @@ const fr: Lang = {
   nav_search: "Recherche",
   nav_library: "Bibliothèque",
   nav_settings: "Paramètres",
+  nav_collapse: "Réduire le menu",
+  nav_expand: "Développer le menu",
   home_tagline: "Lecteur de podcasts gratuit, sans compte",
   home_continue: "Reprendre l’écoute",
   home_empty: "Rien ici pour l’instant.",

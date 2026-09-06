@@ -35,12 +35,12 @@ Playing** sheet for transport, sleep timer, speed and queue access.
 | **Podcast search** | by name, Apple Podcasts link, or a direct RSS feed URL |
 | **Offline episodes** | downloads live in the Cache API and play (and seek) with no connection; feeds are cached in IndexedDB and refresh in the background (stale-while-revalidate) |
 | **Play queue** | queue any episode as "up next" — the queue wins over list order; own page under **Queue** |
-| **Mini transport** | leaving a feed keeps playing; the persistent dock carries skip/play controls (plus prev/next & speed on wide screens) and a seekable progress line — the chevron expands the full **Now Playing** sheet |
+| **Mini transport** | leaving a feed keeps playing; the persistent dock carries skip/play controls (plus prev/next & speed on wide screens) and a seekable progress line — the chevron expands the full **Now Playing** sheet. A title too long for the dock drifts end to end instead of ending in an ellipsis |
 | **Frequency-line scrubber** | signature waveform motif — drag-to-seek hero scrubber in Now Playing, animated line on the mini player while playing |
-| **Now Playing sheet** | full-screen (mobile) / floating panel (desktop): play/pause, prev/next, skip, speed 0.5×–2.5×, sleep timer, resume position, episode notes |
+| **Now Playing sheet** | full-screen at every size: play/pause, prev/next, skip, speed 0.5×–2.5×, sleep timer, resume position, episode notes |
 | **Sleep timer** | presets or any duration, or stop at the end of the episode; live countdown, **+5 min**, gentle fade-out, pauses with playback and survives a reload |
 | **Sharp artwork** | the right rendition is requested per surface, so covers are never upscaled from a thumbnail; the Now Playing background can pick up the cover's dominant colour (toggle in Settings → Appearance) |
-| **Desktop layout** | ≥900px swaps the tab bar for a persistent left sidebar (Home/Search/Library/Settings) |
+| **Desktop layout** | ≥900px swaps the tab bar for a persistent left sidebar (Home/Search/Library/Settings), collapsible to an icon rail; the language switcher sits in the window's own top corner |
 | **Subscriptions** | star podcasts; live in **Library**; OPML import/export + JSON backup |
 | **Themes** | Auto (system), Dark, Light, OLED Black; 7 accent colors (amber "dial glow" default) |
 | **Multilingual** | TR / EN / DE / FR / ES / AR / JA / RU (incl. RTL) |
@@ -111,7 +111,8 @@ three of them and parses whichever answers first.
 │   │   ├── nav.ts          # tab bar / sidebar controller
 │   │   ├── router.ts       # ?podcast= / ?rss= / ?view= ↔ history
 │   │   └── shell.ts, theme.ts, mini-player.ts, waveform.ts, art-tile.ts, ambient.ts,
-│   │       sleep-control.ts, shortcuts.ts, number-prompt.ts, toast.ts, confirm.ts, …
+│   │       sleep-control.ts, marquee.ts, fit-select.ts, shortcuts.ts, number-prompt.ts,
+│   │       toast.ts, confirm.ts, …
 │   ├── i18n/              # 8 languages, compile-time key completeness
 │   ├── styles/
 │   │   ├── tokens.css, themes.css, base.css, layout.css, controls.css,
@@ -189,12 +190,12 @@ oynatma, uyku zamanlayıcısı, hız ve kuyruğa erişim için tam ekran **Şimd
 | **Podcast arama** | isim, Apple Podcasts linki veya doğrudan RSS URL'si |
 | **Çevrimdışı bölümler** | indirilenler Cache API'de yaşar, bağlantısız çalar ve sarar; feed'ler IndexedDB'de önbelleklenir, arka planda tazelenir |
 | **Kuyruk** | bölümü "sıradaki" olarak işaretle — kuyruk, liste sırasından önce gelir; kendi sayfası **Kuyruk** görünümünde |
-| **Mini transport** | feed'den çıkınca çalma sürer; kalıcı dock üzerinde atlama/oynat kontrolleri (geniş ekranda önceki/sonraki ve hız) ve dokunarak sarılabilir ilerleme çizgisi — ok simgesi tam **Şimdi Çalıyor** panelini açar |
+| **Mini transport** | feed'den çıkınca çalma sürer; kalıcı dock üzerinde atlama/oynat kontrolleri (geniş ekranda önceki/sonraki ve hız) ve dokunarak sarılabilir ilerleme çizgisi — ok simgesi tam **Şimdi Çalıyor** panelini açar. Dock'a sığmayan başlık üç nokta ile kesilmek yerine baştan sona kayar |
 | **Frekans-çizgisi dalga-form** | imza motif — Şimdi Çalıyor panelinde sürüklenebilir kahraman dalga-form, çalarken mini oynatıcıda animasyonlu çizgi |
-| **Şimdi Çalıyor paneli** | tam ekran (mobil) / yüzen panel (masaüstü): oynat/duraklat, önceki/sonraki, atlama, 0.5×–2.5× hız, uyku zamanlayıcısı, kaldığın yerden devam etme, bölüm notları |
+| **Şimdi Çalıyor paneli** | her ekran boyutunda tam ekran: oynat/duraklat, önceki/sonraki, atlama, 0.5×–2.5× hız, uyku zamanlayıcısı, kaldığın yerden devam etme, bölüm notları |
 | **Uyku zamanlayıcısı** | hazır süreler veya istediğin süre, ya da bölüm sonunda dur; canlı geri sayım, **+5 dk**, yumuşak sesle kısılma, duraklatınca durur ve sayfa yenilenince kaybolmaz |
 | **Net kapak görselleri** | her yüzey için doğru çözünürlük istenir, kapaklar küçük bir görselden büyütülmez; Şimdi Çalıyor arka planı kapağın baskın rengini alabilir (Ayarlar → Görünüm'den kapatılabilir) |
-| **Masaüstü düzeni** | ≥900px'te sekme çubuğu yerini kalıcı soldan kenar çubuğuna bırakır (Ana Sayfa/Ara/Kütüphane/Ayarlar) |
+| **Masaüstü düzeni** | ≥900px'te sekme çubuğu yerini kalıcı soldan kenar çubuğuna bırakır (Ana Sayfa/Ara/Kütüphane/Ayarlar); kenar çubuğu simge şeridine daraltılabilir, dil seçici pencerenin kendi üst köşesinde durur |
 | **Abonelikler** | yıldızla; **Kütüphane**'de yaşar; OPML içe/dışa aktarma + JSON yedek |
 | **Temalar** | Otomatik (sistem), Koyu, Açık, OLED Siyah; 7 vurgu rengi (varsayılan kehribar "kadran ışıltısı") |
 | **Çok dilli** | TR / EN / DE / FR / ES / AR / JA / RU (RTL dahil) |

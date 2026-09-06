@@ -38,6 +38,12 @@ export interface Settings {
    * positively reports a cellular connection, which iOS never does.
    */
   prefetchAudio: PrefetchMode;
+  /**
+   * Desktop sidebar collapsed to an icon rail. A layout preference rather than
+   * a playback one, but it belongs with the rest of what a returning visitor
+   * expects to find the way they left it.
+   */
+  navCollapsed: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -56,6 +62,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ambientArt: true,
   allowPublicProxies: false,
   prefetchAudio: 'wifi',
+  navCollapsed: false,
 };
 
 /**

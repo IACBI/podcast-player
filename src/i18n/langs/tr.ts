@@ -148,6 +148,8 @@ const tr: Lang = {
   nav_search: "Ara",
   nav_library: "Kütüphane",
   nav_settings: "Ayarlar",
+  nav_collapse: "Menüyü daralt",
+  nav_expand: "Menüyü genişlet",
   home_tagline: "Ücretsiz, hesapsız podcast çalar",
   home_continue: "Dinlemeye devam et",
   home_empty: "Henüz bir şey dinlemedin.",

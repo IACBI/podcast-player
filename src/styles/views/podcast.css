@@ -246,14 +246,21 @@ body:not(.is-playing) .ep-eq i {
 .ep-info {
   min-inline-size: 0;
 }
+/* Two lines rather than one clipped one: on a phone every episode of a series
+   shares the same long prefix, so a single ellipsised line reduced the list to
+   142 rows of "Meksika Açmazı 1. Sezon 1. B…". The clamp is inert on a wide
+   screen, where the title fits anyway. */
 .ep-name {
   font-size: var(--player-font-size);
   font-weight: 500;
   line-height: 1.3;
   color: var(--text);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .ep-item.active .ep-name {
   color: var(--accent-2);

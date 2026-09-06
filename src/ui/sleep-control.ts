@@ -15,6 +15,7 @@ import {
   setSleepMinutes,
 } from '../player/sleep-timer';
 import { sleepState, SLEEP_PRESETS, type SleepState } from '../state/sleep';
+import { fitSelect } from './fit-select';
 import { numberPrompt } from './number-prompt';
 import { toast } from './toast';
 
@@ -22,6 +23,8 @@ import { toast } from './toast';
 const VAL_EPISODE = 'ep';
 const VAL_CUSTOM = 'custom';
 const DEFAULT_CUSTOM_MINUTES = 45;
+/** Floor for the fitted select, so "—" still reads as a control and not a gap. */
+const SLEEP_MIN_WIDTH_PX = 46;
 
 export interface SleepControlEls {
   select: HTMLSelectElement;
@@ -71,6 +74,9 @@ export function initSleepControl(els: SleepControlEls): void {
     }
 
     select.classList.toggle('active', s.mode !== 'off');
+    // "End of episode" is by far the longest option, and a native select is
+    // always as wide as its widest one — which left a 120px box reading "—".
+    fitSelect(select, SLEEP_MIN_WIDTH_PX);
 
     if (countdown) {
       if (s.mode === 'minutes') {
@@ -134,4 +140,6 @@ export function initSleepControl(els: SleepControlEls): void {
   });
   sleepState.subscribe(apply);
   apply(sleepState());
+  // The mono face lands after first paint and changes what the label measures.
+  void document.fonts?.ready.then(() => apply(sleepState()));
 }

@@ -70,6 +70,27 @@
 .icon-btn:hover { background: var(--surface2); color: var(--text); }
 .icon-btn.faved, .icon-btn.active { color: var(--accent); }
 
+/* Skip buttons carry their offset inside the glyph. The seconds live in the
+   icon's own coordinate system, where the circular arrow is centred on
+   (12,12) — so they stay centred at any icon size and in any font, which no
+   percentage offset on an overlaid <span> ever managed. */
+.skip-n {
+  fill: currentColor;
+  stroke: none;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  /* No letter-spacing: CSS adds it after the last glyph too, which shifts
+     what text-anchor:middle centres. */
+}
+
+/* ─ Drifting label (ui/marquee.ts) ─
+   The host keeps the ellipsis it always had; the track only becomes a
+   transformable box while there is genuinely something to drift towards. */
+.marquee { overflow: hidden; }
+.marquee-track { display: inline; white-space: nowrap; }
+.marquee.marquee-on .marquee-track { display: inline-block; will-change: transform; }
+
 /* ─ Select ─ */
 .seri-select {
   appearance: none;
@@ -82,6 +103,9 @@
   font-family: var(--font-body);
   font-size: var(--fs-sm);
   cursor: pointer;
+  /* ui/fit-select.ts writes an explicit width on the surfaces that need one;
+     easing it keeps a timer choice from snapping the row it sits in. */
+  transition: inline-size var(--d-base) var(--ease-out);
 }
 .seri-select:hover { background: var(--surface2); }
 .s-select { /* legacy alias */

@@ -111,7 +111,9 @@ Referans davranış: `v1-legacy` git etiketi (`git checkout v1-legacy` + `npx se
 
 - [ ] ≥900px: sekme çubuğu yerine solda **kalıcı kenar çubuğu** (Ana Sayfa/Ara/Kütüphane/Ayarlar); aktif sekme vurgulanır (`aria-current="page"`).
 - [ ] ≥900px: mini dock kenar çubuğunun sağında, tam genişlikte konumlanır (kenar çubuğunu örtmez).
-- [ ] <900px: alttan sekme çubuğu + tek panelli ekran davranışı korunur.
+- [ ] ≥900px: kenar çubuğunun altındaki düğme çubuğu **simge şeridine daraltır**; etiketler gizlenir, simgeler tooltip kazanır, mini dock ve içerik alanı birlikte kayar; seçim sayfa yenilenince korunur (`aria-expanded` durumu yansıtır).
+- [ ] ≥900px: Ana Sayfa'daki dil seçici, 720px'lik okuma sütununun değil **pencerenin** sağ üst köşesindedir; ilk satırın altına girmez.
+- [ ] <900px: alttan sekme çubuğu + tek panelli ekran davranışı korunur; daraltma düğmesi görünmez.
 - [ ] Tema "Otomatik": işletim sistemi teması değişince uygulama canlı uyar (4 tema: Dark/Light/OLED Black + Otomatik).
 - [ ] Bölüm satırlarında ilerleme çizgisi; bitenler soluk + ✓.
 
@@ -125,6 +127,10 @@ Ekran görüntüsü altyapısı: `scripts/shot.cjs` (headless Edge + vite previe
 - [ ] Light temada aynı genişliklerde kontrast/okunabilirlik kontrolü (özellikle küçük mono etiketler).
 - [ ] `ar` (RTL): başlık, kontroller, liste hizaları **ve sekme çubuğu/kenar çubuğu** aynalanır; taşma yok.
 - [ ] Klavye: Tab ile arama sonuçları gezinilir, Enter/Space açar; select/range odak halkası görünür; sekme çubuğu/kenar çubuğu öğeleri Tab ile erişilebilir, aktif öğe `aria-current="page"` taşır; Şimdi Çalıyor paneli kapatma düğmesi anlamlı `aria-label` taşır.
+- [ ] Uzun başlıklar: dock'a sığmayan bölüm başlığı baştan sona kayar ve başa döner; sığan başlık **hiç** kıpırdamaz; `prefers-reduced-motion: reduce` altında kaymaz, üç noktaya döner. `ar` (RTL) dilinde kayma ters yöne gider.
+- [ ] Bölüm listesi: dar ekranda başlık iki satıra sarar (tek satırda kesilmez); ikinci satır da taşarsa üç nokta ile biter.
+- [ ] Uyku zamanlayıcısı seçicisi gösterdiği metnin genişliğinde durur: kapalıyken dar (hız seçicisiyle aynı ağırlıkta), "Bölüm sonunda" seçiliyken genişler; açılır liste seçenekleri tam okunur.
+- [ ] Atlama düğmelerindeki saniye rakamları dairesel okun tam ortasındadır (her iki yüzeyde ve ayarlardaki tüm değerlerde: 5/10/15/30/60 · 10/15/30/45/60/90).
 - [ ] Arama hatasında kırmızı hata kutusu + "Tekrar dene" düğmesi; boş sonuçta boş durum mesajı; yükleme sırasında "Aranıyor..." kutusu.
 
 ## 16. Worker & derin linkler

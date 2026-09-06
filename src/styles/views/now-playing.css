@@ -1,4 +1,6 @@
 /* Now Playing sheet contents — owned by WP-E (sheet chrome is in overlays.css).
+   Full-screen at every size; the two-column split below is the only thing that
+   changes with width.
    Hero scrubber = the signature frequency line (see signal-line.css).
    Tokens only, logical properties only. */
 
@@ -11,6 +13,12 @@
 }
 @media (min-width: 900px) {
   .np-inner { padding: var(--s-4) var(--s-6) var(--s-5); }
+}
+/* The sheet is full-bleed, so past a certain width the padding — not a
+   max-width box — is what centres the content. That keeps the ambient wash
+   below spanning the whole surface rather than stopping at a column edge. */
+@media (min-width: 1240px) {
+  .np-inner { padding-inline: max(var(--s-6), calc((100% - 1080px) / 2)); }
 }
 
 /* ─ Top bar: dismiss chevron + feed eyebrow ─ */
@@ -110,9 +118,11 @@ body.has-ambient .np-inner::before { opacity: 1; }
   text-align: center;
   color: var(--text);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  overflow-wrap: anywhere;
   transition: opacity 0.15s var(--ease-smooth);
 }
 .np-title.swapping { opacity: 0; }
@@ -143,20 +153,6 @@ body.has-ambient .np-inner::before { opacity: 1; }
 .np-tp svg { inline-size: 22px; block-size: 22px; }
 .np-tp:disabled { opacity: 0.3; cursor: default; }
 .np-tp:disabled:hover { background: none; color: var(--text2); }
-
-/* skip buttons: seconds badge centred inside the circular-arrow glyph */
-.np-skip { position: relative; }
-.np-skip-n {
-  position: absolute;
-  inset-block-start: 52%;
-  inset-inline-start: 50%;
-  transform: translate(-50%, -50%);
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  font-weight: 700;
-  color: currentColor;
-  pointer-events: none;
-}
 
 /* the amber hero: big circular play/pause */
 .np-play {
@@ -202,17 +198,17 @@ body.has-ambient .np-inner::before { opacity: 1; }
 .np-sel.active { color: var(--accent); border-color: var(--accent); }
 
 /* ─ Sleep timer: live countdown + extend ─
-   With a countdown and a +5 button the sleep group is four items wide, which
-   collides with the speed control on a phone. Give it its own row until there
-   is room, and never let its own children wrap against each other. */
+   Running, the group grows a countdown and a +5 button — four items wide,
+   which collides with the speed control on a phone, so it takes the row to
+   itself. Idle it is an icon and a short select and shares the row happily.
+   Without :has() it simply keeps the row it would have wrapped onto anyway. */
 .np-sleep {
   gap: var(--s-1);
   flex-wrap: nowrap;
-  flex-basis: 100%;
   justify-content: center;
 }
-@media (min-width: 560px) {
-  .np-sleep { flex-basis: auto; }
+@media (max-width: 559px) {
+  .np-sleep:has(.np-sel.active) { flex-basis: 100%; }
 }
 .np-sleep .np-sel { min-inline-size: 0; }
 .np-sleep-left {
