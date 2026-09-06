@@ -5,9 +5,11 @@ Vite + TypeScript SPA, no UI framework. `src/ui/h.ts` builds DOM,
 Cloudflare Worker (Hono) that proxies RSS and iTunes. Ships as a PWA to GitHub
 Pages, plus a Tauri Windows shell in `desktop/`.
 
-`README.md` describes the product and the layout; `CONTRIBUTING.md` has the
-rules a human contributor needs. This file is only the things that are easy to
-get wrong from the outside.
+`README.md` describes the product and the layout. **`CONTRIBUTING.md` holds the
+rules that changes have to satisfy** — the XSS invariant, i18n completeness,
+design tokens, settings validation, CSP. Read it; it is not repeated here.
+
+This file is the rest: what to run, what bites, and how a release goes out.
 
 ## The gate
 
@@ -32,28 +34,16 @@ Run it before claiming anything works. `npm run dev` serves on **5199**.
   `visibility:hidden`, so its measurements stay valid — but it also means the
   sheet deliberately skips `timeupdate` work while closed. Read playback time
   from the mini dock (`#miniScrub`) when the sheet is shut.
-- Feed lists render as `.ep-item`, not `.row`.
-
-## Invariants
-
-- **Feed data reaches the DOM only through `h()` or `textContent`.** `innerHTML`
-  is for static constants only; ESLint fails interpolation, concatenation,
-  `insertAdjacentHTML` and `eval`.
-- **Every user-visible string exists in all 8 languages** — a key in
-  `src/i18n/types.ts` plus `src/i18n/langs/{tr,en,de,fr,es,ar,ja,ru}.ts`. A
-  missing one is a compile error.
-- **Styling uses tokens and logical properties.** No literal colours or `left`/
-  `right`; RTL is expected to work and is checked with `ar`.
-- **A new setting** needs a field, a default, and — unless free-form — an entry
-  in `ALLOWED` (`src/state/settings.ts`), which is what keeps a tampered
-  `localStorage` value out of the DOM and the audio element.
-- **A new external origin** means editing the CSP in `index.html`. Anything that
-  changes the app's exposure belongs in `SECURITY.md` too.
+- **A hidden browser pane freezes transitions.** A width read mid-animation is
+  not the settled value; disable transitions before measuring, or assert on the
+  class and the computed target instead.
+- Episode lists render as `.ep-item`, not `.row`.
 
 ## Verifying at the UI
 
-Unit tests do not cover layout or playback wiring. The headless smokes do, and
-they need Edge at `C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe`:
+Unit tests cover no layout and no playback wiring. The headless smokes do, and
+they need Edge at
+`C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe`:
 
 ```bash
 node scripts/smoke-p5-mini.cjs      # dock, queue, back-navigation
@@ -61,12 +51,13 @@ node scripts/smoke-p3-offline.cjs   # download → offline reload → playback
 node scripts/smoke-live.cjs         # the deployed site against real CDNs
 ```
 
-`smoke-live.cjs` is the only one that exercises a third-party audio host, which
-is where CSP mistakes show up — a local run is always same-origin.
+`smoke-live.cjs` is the only one that touches a third-party audio host, which is
+where CSP mistakes surface — every local run is same-origin and will pass a CSP
+that production rejects. That gap hid broken downloads for two releases.
 
-Reference screenshots: `node scripts/shot.cjs` (docs) and
-`node scripts/store-shots.cjs` (the manifest's install screenshots). Regenerate
-both when the UI changes.
+When the UI changes, regenerate both sets of screenshots: `node
+scripts/shot.cjs` (docs) and `node scripts/store-shots.cjs` (the manifest's
+install screenshots, which users actually see).
 
 ## Releasing
 
